@@ -370,10 +370,47 @@ def get_sample_images():
     return unique[:10] if unique else None
 
 
+def get_available_sessions():
+    """利用可能なセッションフォルダを取得"""
+    import glob
+    sessions = []
+    experiments_dir = "/workspace/experiments"
+
+    if os.path.exists(experiments_dir):
+        # session_* パターンのフォルダを検索
+        session_dirs = glob.glob(os.path.join(experiments_dir, "session_*"))
+        for session_dir in sorted(session_dirs, reverse=True):  # 新しい順
+            rgb_dir = os.path.join(session_dir, "rgb")
+            if os.path.exists(rgb_dir):
+                sessions.append(session_dir)
+
+    return sessions
+
+
+def get_session_thumbnails(session_dir):
+    """セッションフォルダ内のRGB画像をサムネイルとして取得"""
+    import glob
+
+    if not session_dir or not os.path.exists(session_dir):
+        return []
+
+    rgb_dir = os.path.join(session_dir, "rgb")
+    if not os.path.exists(rgb_dir):
+        return []
+
+    # JPGファイルを取得
+    files = sorted(glob.glob(os.path.join(rgb_dir, "*.jpg")))
+    files += sorted(glob.glob(os.path.join(rgb_dir, "*.png")))
+
+    # (画像パス, ラベル) のタプルリストを返す
+    thumbnails = [(f, os.path.basename(f)) for f in files[:20]]  # 最大20枚
+    return thumbnails
+
+
 def create_demo():
     """Gradioデモを作成"""
     demo_app = SAM3Demo()
-    sample_images = get_sample_images()
+    available_sessions = get_available_sessions()
 
     with gr.Blocks(title="SAM 3 Interactive Demo") as demo:
         gr.Markdown("""
@@ -382,47 +419,108 @@ def create_demo():
         Meta AIのSegment Anything Model 3をインタラクティブにテストできます。
 
         ## 使い方
-        1. 「ファイルパス」にコンテナ内の画像パスを入力
-        2. 「パスから読み込む」ボタンをクリック
+        1. セッションフォルダを選択
+        2. サムネイルから画像を選択
         3. 出力画像をクリックしてセグメント
         4. 背景モードをONにして除外したい領域をクリック
         """)
 
         with gr.Row():
-            with gr.Column():
+            with gr.Column(scale=1):
+                # セッション選択
+                session_dropdown = gr.Dropdown(
+                    choices=available_sessions,
+                    label="セッションフォルダ",
+                    info="experimentsフォルダ内のセッションを選択",
+                    value=available_sessions[0] if available_sessions else None
+                )
+                refresh_btn = gr.Button("🔄 セッション更新", size="sm")
+
+                # サムネイルギャラリー
+                thumbnail_gallery = gr.Gallery(
+                    label="RGB画像（クリックで選択）",
+                    columns=4,
+                    rows=2,
+                    height=200,
+                    object_fit="cover",
+                    allow_preview=False
+                )
+
+                gr.Markdown("---")
+
+                # ファイルパス（自動設定される）
                 file_path_input = gr.Textbox(
                     label="RGBファイルパス",
-                    placeholder="/workspace/experiments/sample.jpg",
-                    info="コンテナ内の画像ファイルパスを入力"
+                    placeholder="上のサムネイルをクリックすると自動設定されます",
+                    info="または直接パスを入力"
                 )
                 load_path_btn = gr.Button("パスから読み込む", variant="primary")
 
                 with gr.Row():
                     reset_btn = gr.Button("リセット", variant="secondary")
                     save_btn = gr.Button("マスク保存", variant="secondary")
-                bg_mode = gr.Checkbox(label="背景モード（チェックすると次のクリックは背景として扱う）", value=False)
+                bg_mode = gr.Checkbox(label="背景モード（除外領域をクリック）", value=False)
 
                 # 3D出力セクション
-                gr.Markdown("---\n#### 3D出力（オプション）")
+                gr.Markdown("---\n#### 3D出力")
                 depth_path_input = gr.Textbox(
                     label="深度マップパス",
-                    placeholder="/workspace/experiments/depth.npy",
-                    info="深度マップファイル（.npy or .png）"
+                    placeholder="自動設定されます",
+                    info="深度マップファイル（.npy）"
                 )
                 export_3d_btn = gr.Button("3D点群を出力 (PLY)", variant="secondary")
 
-            with gr.Column():
-                output_image = gr.Image(label="セグメント結果（ここをクリック）")
+            with gr.Column(scale=2):
+                output_image = gr.Image(label="セグメント結果（ここをクリック）", height=600)
                 info_text = gr.Textbox(label="情報", interactive=False)
-                save_result = gr.Textbox(label="保存結果", interactive=False, lines=4)
-
-        # サンプル画像のパスを表示
-        if sample_images:
-            gr.Markdown("### サンプル画像パス（コピーして上のファイルパス欄に貼り付け）")
-            sample_list = "\n".join([f"- `{s}`" for s in sample_images])
-            gr.Markdown(sample_list)
+                save_result = gr.Textbox(label="保存結果", interactive=False, lines=3)
 
         # イベントハンドラ
+
+        # セッション選択時にサムネイルを更新
+        def update_thumbnails(session_dir):
+            thumbnails = get_session_thumbnails(session_dir)
+            return thumbnails
+
+        session_dropdown.change(
+            update_thumbnails,
+            inputs=session_dropdown,
+            outputs=thumbnail_gallery
+        )
+
+        # セッション更新ボタン
+        def refresh_sessions():
+            sessions = get_available_sessions()
+            return gr.Dropdown(choices=sessions, value=sessions[0] if sessions else None)
+
+        refresh_btn.click(
+            refresh_sessions,
+            outputs=session_dropdown
+        )
+
+        # サムネイルクリック時にパスを設定して読み込み
+        def on_thumbnail_select(session_dir, evt: gr.SelectData):
+            thumbnails = get_session_thumbnails(session_dir)
+            if evt.index < len(thumbnails):
+                selected_path = thumbnails[evt.index][0]
+                # 画像を読み込んで返す
+                result = demo_app.load_from_path(selected_path)
+                return selected_path, result[0], result[1], result[2]
+            return "", None, "サムネイルが見つかりません", ""
+
+        thumbnail_gallery.select(
+            on_thumbnail_select,
+            inputs=session_dropdown,
+            outputs=[file_path_input, output_image, info_text, depth_path_input]
+        )
+
+        # 初期表示：最初のセッションのサムネイルを表示
+        demo.load(
+            update_thumbnails,
+            inputs=session_dropdown,
+            outputs=thumbnail_gallery
+        )
+
         # ファイルパスから読み込み（深度パスも自動設定）
         load_path_btn.click(
             demo_app.load_from_path,
@@ -463,9 +561,7 @@ def create_demo():
         ## ヒント
         - 複数回クリックすると、セグメントが洗練されます
         - 背景モードをONにして、除外したい部分をクリックすると精度が上がります
-        - マスク保存で `/workspace/experiments/sam3_demo_mask.png` に保存されます
         - **3D出力**: 深度マップがあれば、セグメント領域を3D点群（PLY）として出力できます
-        - **Blenderでインポート**: File > Import > Stanford (.ply)
         """)
 
     return demo
