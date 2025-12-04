@@ -33,8 +33,8 @@ iPad ProのLiDARセンサーで取得した実測データと、SAM 3Dで生成�
 ```bash
 cd ~/SAM3D-LiDAR-fz
 
-# 仮想環境を作成
-python3 -m venv venv
+# Python 3.11で仮想環境を作成
+python3.11 -m venv venv
 source venv/bin/activate
 
 # 依存関係をインストール
