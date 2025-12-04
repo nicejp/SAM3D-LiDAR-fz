@@ -443,6 +443,47 @@ huggingface-cli download facebook/sam-3d-objects --local-dir checkpoints/sam-3d-
 python -c "from sam_3d_objects import Inference; print('SAM 3D Objects OK')"
 ```
 
+### DGX Spark (ARM64/aarch64) での追加手順
+
+DGX SparkはARM64アーキテクチャのため、PyTorch3Dのプリビルドホイールが存在しない。
+ソースからビルドする必要がある。
+
+#### PyTorch3Dのインストール（ARM64専用）
+
+```bash
+# 1. 依存関係のインストール
+pip install "git+https://github.com/facebookresearch/fvcore"
+pip install "git+https://github.com/facebookresearch/iopath"
+
+# 2. 環境変数の設定（重要！）
+export FORCE_CUDA=1
+export TORCH_CUDA_ARCH_LIST="12.0"  # DGX Spark GB110用、仮想モード互換
+
+# 3. mainブランチからソースビルド
+pip install "git+https://github.com/facebookresearch/pytorch3d.git@main" --no-build-isolation
+```
+
+**注意点:**
+- `TORCH_CUDA_ARCH_LIST="12.0"` はDGX SparkのCUDA計算能力12.1に対応（仮想モード互換のため12.0を指定）
+- `--no-build-isolation` は既存のPyTorchを使用するために必要
+- ビルドには約10〜15分かかる
+- 古いタグ（v0.7.7など）はPyTorch 2.10と非互換、必ずmainブランチを使用
+
+#### SAM 3D Objects本体のインストール（ARM64）
+
+```bash
+cd /workspace/sam-3d-objects
+
+# hatch-requirements-txtプラグインをインストール
+pip install hatch-requirements-txt
+
+# 依存関係を個別インストール
+pip install hydra-core omegaconf einops
+
+# --no-depsで本体のみインストール
+pip install -e . --no-deps
+```
+
 ### 基本的な使い方
 
 ```python
