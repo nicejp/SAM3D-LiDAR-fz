@@ -1,0 +1,88 @@
+# Python仮想環境
+venv/
+
+# SAM 3リポジトリ（別途git管理）
+sam3/
+
+# SAM 3D Objectsリポジトリ（別途git管理）
+sam-3d-objects/
+
+# Xcode
+*.xcuserstate
+*.xcworkspace/xcuserdata/
+*.xcodeproj/xcuserdata/
+*.xcodeproj/project.xcworkspace/xcuserdata/
+DerivedData/
+build/
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+Pods/
+*.xcworkspace
+!*.xcodeproj
+ipad_app/**/build/
+
+# Swift Package Manager
+.build/
+.swiftpm/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# PyTorch / Deep Learning
+*.pt
+*.pth
+*.onnx
+checkpoints/
+models/
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+
+# 環境変数
+.env
+.env.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# 実験データ（大容量）
+experiments/
+test_data/
+*.mp4
+*.ply
+*.obj
+*.fbx
+
+# ログ
+logs/
+*.log
+
+# データセット（シンボリックリンク）
+datasets/
