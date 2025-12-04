@@ -151,16 +151,23 @@ python -m server.visualization.web_viewer --port 8765
 
 ```bash
 # Dockerコンテナ内で実行
+export PYTHONPATH=/workspace:/workspace/sam3:$PYTHONPATH
 
-# 画像でクリック座標を選択
-python -m server.phase2_full.click_selector experiments/session_xxx
-
-# SAM 3でセグメント
-python -m server.phase2_full.sam3_segmentation experiments/session_xxx --click 512,384
-
-# または、Gradio Web UIを使用
+# Gradio Web UIを使用（推奨）
 python -m server.phase2_full.sam3_demo
 # → ブラウザで http://localhost:7860 にアクセス
+```
+
+**sam3_demo Web UI:**
+1. セッションフォルダをドロップダウンで選択
+2. サムネイルギャラリーから画像をクリック → 自動で読み込み
+3. 右側の大きな画像をクリック → セグメント実行
+4. 「背景モード」ONで除外領域を指定
+5. 「3D点群を出力 (PLY)」で点群生成
+
+```bash
+# コマンドラインで直接実行する場合
+python -m server.phase2_full.sam3_segmentation experiments/session_xxx --click 512,384
 ```
 
 ### Step 4: SAM 3Dで3D生成（未実装）
