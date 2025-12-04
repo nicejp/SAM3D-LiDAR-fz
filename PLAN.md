@@ -484,6 +484,36 @@ pip install hydra-core omegaconf einops
 pip install -e . --no-deps
 ```
 
+### ARM64 (DGX Spark) での制限事項
+
+**注意:** DGX Spark (ARM64/aarch64) ではSAM 3D Objectsの完全な動作は現時点で困難。
+
+**動作しない依存関係:**
+- `pytorch3d.renderer`: CUDAリンクエラー（ARM64非対応）
+- `open3d`: ARM64ホイールなし
+- `kaolin`: ARM64ホイールなし、usd-coreも非対応
+- `spconv`: ビルド複雑（pccm/cumm依存）
+
+**代替案:**
+1. **Meta Web Demo** (後述) - 検証・プロトタイプ用
+2. **x86_64環境** (WSL2, クラウドGPU) - 本格運用用
+3. **LiDARのみ** - SAM 3D部分をスキップ
+
+### Meta公式デモサイト
+
+環境構築なしでSAM 3D Objectsを試せる公式デモ:
+
+**URL:** https://www.aidemos.meta.com/segment-anything/editor/convert-image-to-3d
+
+**使い方:**
+1. 画像をアップロード
+2. 対象物をクリックしてマスクを選択
+3. 「Convert to 3D」で3Dモデル生成
+4. 結果をダウンロード
+
+**利点:** 無料、環境構築不要、即座に結果確認可能
+**制限:** API連携不可、バッチ処理不可、手動操作のみ
+
 ### 基本的な使い方
 
 ```python

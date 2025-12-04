@@ -93,6 +93,9 @@ export TORCH_CUDA_ARCH_LIST="12.0"
 pip install "git+https://github.com/facebookresearch/pytorch3d.git@main" --no-build-isolation
 ```
 
+**注意:** DGX Spark (ARM64) ではSAM 3D Objectsの完全動作は困難。代替としてWSL2 (x86_64) または Meta公式デモを使用:
+- **Meta Demo:** https://www.aidemos.meta.com/segment-anything/editor/convert-image-to-3d
+
 ### 3. iPadアプリのセットアップ
 
 #### 要件
