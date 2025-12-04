@@ -339,6 +339,53 @@ class SAM3Demo:
         except Exception as e:
             return f"エラー: {str(e)}"
 
+    def export_rgba(self):
+        """マスク領域をRGBA画像（背景透明）として出力"""
+        if self.inference_state is None or not self.click_points:
+            return "マスクがありません。先に画像をクリックしてセグメントしてください。"
+
+        if self.current_image is None:
+            return "画像が読み込まれていません"
+
+        try:
+            # マスクを取得
+            masks, scores, _ = self.model.predict_inst(
+                self.inference_state,
+                point_coords=np.array(self.click_points),
+                point_labels=np.array(self.click_labels),
+                multimask_output=True
+            )
+            best_mask = masks[np.argmax(scores)]
+            if best_mask.dtype != bool:
+                best_mask = best_mask > 0.5
+
+            # RGBA画像を作成
+            rgb = self.current_image.copy()
+            h, w = rgb.shape[:2]
+
+            # アルファチャンネルを作成（マスク領域=255、背景=0）
+            alpha = (best_mask.astype(np.uint8) * 255)
+
+            # RGBAに結合
+            rgba = np.dstack([rgb, alpha])
+
+            # 保存
+            output_dir = "/workspace/experiments"
+            os.makedirs(output_dir, exist_ok=True)
+            output_path = os.path.join(output_dir, "sam3_demo_rgba.png")
+
+            rgba_img = Image.fromarray(rgba, mode='RGBA')
+            rgba_img.save(output_path)
+
+            # マスクも保存
+            mask_path = os.path.join(output_dir, "sam3_demo_mask.png")
+            mask_img = Image.fromarray(alpha)
+            mask_img.save(mask_path)
+
+            return f"RGBA画像を出力しました!\n  出力: {output_path}\n  マスク: {mask_path}\n\nSAM 3D Objectsの入力に使用できます"
+        except Exception as e:
+            return f"エラー: {str(e)}"
+
 
 def get_sample_images():
     """サンプル画像のパスを取得"""
@@ -461,8 +508,10 @@ def create_demo():
                     save_btn = gr.Button("マスク保存", variant="secondary")
                 bg_mode = gr.Checkbox(label="背景モード（除外領域をクリック）", value=False)
 
-                # 3D出力セクション
-                gr.Markdown("---\n#### 3D出力")
+                # 出力セクション
+                gr.Markdown("---\n#### 出力")
+                export_rgba_btn = gr.Button("RGBA画像を出力 (SAM 3D用)", variant="primary")
+
                 depth_path_input = gr.Textbox(
                     label="深度マップパス",
                     placeholder="自動設定されます",
@@ -556,12 +605,18 @@ def create_demo():
             outputs=save_result
         )
 
+        export_rgba_btn.click(
+            demo_app.export_rgba,
+            outputs=save_result
+        )
+
         gr.Markdown("""
         ---
         ## ヒント
         - 複数回クリックすると、セグメントが洗練されます
         - 背景モードをONにして、除外したい部分をクリックすると精度が上がります
-        - **3D出力**: 深度マップがあれば、セグメント領域を3D点群（PLY）として出力できます
+        - **RGBA出力**: SAM 3D Objectsの入力用に背景透明の画像を出力
+        - **3D出力**: 深度マップがあれば、セグメント領域を3D点群（PLY）として出力
         """)
 
     return demo
