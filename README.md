@@ -44,15 +44,36 @@ pip install -r server/requirements.txt
 ### 2. Dockerコンテナの起動（SAM 3使用時）
 
 ```bash
+# SAM 3セットアップ済みコンテナを使用（推奨）
 docker run --gpus all --ipc=host \
   --ulimit memlock=-1 --ulimit stack=67108864 \
   --network=host \
   -v ~/SAM3D-LiDAR-fz:/workspace \
   -v ~/datasets:/workspace/datasets \
+  -it sam3d-lidar:sam3-ready
+
+# PYTHONPATHを設定（毎回必要）
+export PYTHONPATH=/workspace:/workspace/sam3:$PYTHONPATH
+```
+
+**初回セットアップ（sam3d-lidar:sam3-readyがない場合）:**
+```bash
+# ベースコンテナを起動
+docker run --gpus all --ipc=host \
+  --ulimit memlock=-1 --ulimit stack=67108864 \
+  --network=host \
+  -v ~/SAM3D-LiDAR-fz:/workspace \
+  --name sam3d-setup \
   -it lidar-llm-mcp:sam3-tested
 
-# コンテナ内でPYTHONPATHを設定
-export PYTHONPATH=/workspace:/workspace/sam3:$PYTHONPATH
+# コンテナ内でSAM 3をクローン
+cd /workspace
+git clone https://github.com/facebookresearch/sam3.git
+exit
+
+# コンテナを保存
+docker commit sam3d-setup sam3d-lidar:sam3-ready
+docker rm sam3d-setup
 ```
 
 ### 3. iPadアプリのセットアップ
