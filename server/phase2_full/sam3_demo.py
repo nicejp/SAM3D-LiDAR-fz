@@ -109,11 +109,11 @@ class SAM3Demo:
     def load_from_path(self, file_path):
         """ファイルパスから画像を読み込み"""
         if not file_path or not file_path.strip():
-            return None, "ファイルパスを入力してください"
+            return None, "ファイルパスを入力してください", ""
 
         file_path = file_path.strip()
         if not os.path.exists(file_path):
-            return None, f"ファイルが見つかりません: {file_path}"
+            return None, f"ファイルが見つかりません: {file_path}", ""
 
         try:
             self.load_model()
@@ -130,9 +130,26 @@ class SAM3Demo:
             self.inference_state = self.processor.set_image(pil_image)
 
             h, w = image.shape[:2]
-            return image, f"画像を読み込みました ({w}x{h})。出力画像をクリックしてセグメントしてください。"
+
+            # 深度マップパスを自動推測
+            depth_path = self._guess_depth_path(file_path)
+
+            return image, f"画像を読み込みました ({w}x{h})。出力画像をクリックしてセグメントしてください。", depth_path
         except Exception as e:
-            return None, f"エラー: {str(e)}"
+            return None, f"エラー: {str(e)}", ""
+
+    def _guess_depth_path(self, rgb_path):
+        """RGBパスから深度マップパスを推測"""
+        # /workspace/experiments/session_xxx/rgb/frame_000002.jpg
+        # → /workspace/experiments/session_xxx/depth/frame_000002.npy
+        if "/rgb/" in rgb_path:
+            depth_path = rgb_path.replace("/rgb/", "/depth/")
+            # 拡張子を .npy に変更
+            base = os.path.splitext(depth_path)[0]
+            depth_path = base + ".npy"
+            if os.path.exists(depth_path):
+                return depth_path
+        return ""
 
     def segment_click(self, image, evt: gr.SelectData):
         """クリック位置でセグメント"""
@@ -406,11 +423,11 @@ def create_demo():
             gr.Markdown(sample_list)
 
         # イベントハンドラ
-        # ファイルパスから読み込み
+        # ファイルパスから読み込み（深度パスも自動設定）
         load_path_btn.click(
             demo_app.load_from_path,
             inputs=file_path_input,
-            outputs=[output_image, info_text]
+            outputs=[output_image, info_text, depth_path_input]
         )
 
         def handle_click(bg_mode, evt: gr.SelectData):
