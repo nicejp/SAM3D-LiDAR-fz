@@ -646,9 +646,9 @@ export PYTHONPATH=/workspace:/workspace/sam3:$PYTHONPATH
 ## 開発フェーズ
 
 ### Phase 1: データ取得パイプライン
-- [ ] LiDAR-LLM-MCPからコンポーネント移行
-- [ ] iPadアプリにRGB/深度送信機能を追加
-- [ ] WebSocketサーバー修正（RGB/深度保存対応）
+- [x] LiDAR-LLM-MCPからコンポーネント移行 ✅ (2025/12/4)
+- [x] iPadアプリにRGB/深度送信機能を追加 ✅ (2025/12/4)
+- [x] WebSocketサーバー修正（RGB/深度保存対応） ✅ (2025/12/4)
 - [ ] Web GUI動作確認
 
 ### Phase 2: セグメンテーション
