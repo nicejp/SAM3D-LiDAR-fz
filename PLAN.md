@@ -174,13 +174,17 @@ python -m server.phase2_full.click_selector experiments/session_xxx
 
 **SAM 3のセットアップ (Docker内):**
 ```bash
-# lidar-llm-mcp:sam3-tested コンテナを使用（SAM 3インストール済み）
+# lidar-llm-mcp:sam3-tested コンテナを使用
 docker run --gpus all --ipc=host --ulimit memlock=-1 --ulimit stack=67108864 \
   --network=host \
   -v ~/SAM3D-LiDAR-fz:/workspace \
   -it lidar-llm-mcp:sam3-tested
 
-# コンテナ内でPYTHONPATHを設定
+# コンテナ内でSAM 3をクローン（初回のみ）
+cd /workspace
+git clone https://github.com/facebookresearch/sam3.git
+
+# PYTHONPATHを設定（毎回必要）
 export PYTHONPATH=/workspace:/workspace/sam3:$PYTHONPATH
 ```
 
@@ -652,7 +656,7 @@ export PYTHONPATH=/workspace:/workspace/sam3:$PYTHONPATH
 - [x] Web GUI動作確認 ✅ (2025/12/4) - 26フレーム取得成功
 
 ### Phase 2: セグメンテーション
-- [ ] SAM 3統合・動作確認
+- [x] SAM 3統合・動作確認 ✅ (2025/12/4)
 - [ ] Web GUIクリック → マスク生成
 - [ ] 点群抽出（逆投影法）実装
 - [ ] RGBA画像生成
