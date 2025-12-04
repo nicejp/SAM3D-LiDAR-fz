@@ -649,7 +649,7 @@ export PYTHONPATH=/workspace:/workspace/sam3:$PYTHONPATH
 - [x] LiDAR-LLM-MCPからコンポーネント移行 ✅ (2025/12/4)
 - [x] iPadアプリにRGB/深度送信機能を追加 ✅ (2025/12/4)
 - [x] WebSocketサーバー修正（RGB/深度保存対応） ✅ (2025/12/4)
-- [ ] Web GUI動作確認
+- [x] Web GUI動作確認 ✅ (2025/12/4) - 26フレーム取得成功
 
 ### Phase 2: セグメンテーション
 - [ ] SAM 3統合・動作確認
