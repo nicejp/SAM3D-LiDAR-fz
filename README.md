@@ -76,6 +76,23 @@ docker commit sam3d-setup sam3d-lidar:sam3-ready
 docker rm sam3d-setup
 ```
 
+**DGX Spark (ARM64) でのPyTorch3D追加インストール:**
+
+SAM 3D Objectsを使用する場合、PyTorch3Dが必要。DGX SparkはARM64アーキテクチャのため、ソースからビルドする。
+
+```bash
+# 依存関係
+pip install "git+https://github.com/facebookresearch/fvcore"
+pip install "git+https://github.com/facebookresearch/iopath"
+
+# 環境変数設定（DGX Spark GB110用）
+export FORCE_CUDA=1
+export TORCH_CUDA_ARCH_LIST="12.0"
+
+# ソースからビルド（約10-15分）
+pip install "git+https://github.com/facebookresearch/pytorch3d.git@main" --no-build-isolation
+```
+
 ### 3. iPadアプリのセットアップ
 
 #### 要件
