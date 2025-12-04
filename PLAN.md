@@ -657,7 +657,7 @@ export PYTHONPATH=/workspace:/workspace/sam3:$PYTHONPATH
 
 ### Phase 2: セグメンテーション
 - [x] SAM 3統合・動作確認 ✅ (2025/12/4)
-- [ ] Web GUIクリック → マスク生成
+- [x] Web GUIクリック → マスク生成 ✅ (2025/12/4) - sam3_demo UI改善
 - [ ] 点群抽出（逆投影法）実装
 - [ ] RGBA画像生成
 
