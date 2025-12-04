@@ -659,7 +659,7 @@ export PYTHONPATH=/workspace:/workspace/sam3:$PYTHONPATH
 - [x] SAM 3統合・動作確認 ✅ (2025/12/4)
 - [x] Web GUIクリック → マスク生成 ✅ (2025/12/4) - sam3_demo UI改善
 - [x] 点群抽出（逆投影法）実装 ✅ (2025/12/4) - 3D点群出力(PLY)動作確認
-- [ ] RGBA画像生成
+- [x] RGBA画像生成 ✅ (2025/12/4) - SAM 3D用背景透明画像出力
 
 ### Phase 3: 3D生成・融合
 - [ ] SAM 3D Objectsセットアップ
