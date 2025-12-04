@@ -194,7 +194,7 @@ extension ARManager: ARSessionDelegate {
             }
 
             // メッシュ頂点データをJSON形式でパッケージ
-            var packet: [String: Any] = [
+            let packet: [String: Any] = [
                 "type": "mesh_vertices",
                 "frame_id": frameCount,
                 "timestamp": frame.timestamp,
@@ -232,8 +232,8 @@ extension ARManager: ARSessionDelegate {
             ]
 
             // RGB画像を送信
-            if let capturedImage = frame.capturedImage,
-               let jpegData = pixelBufferToJPEG(capturedImage) {
+            let capturedImage = frame.capturedImage
+            if let jpegData = pixelBufferToJPEG(capturedImage) {
                 rgbPacket["rgb"] = jpegData.base64EncodedString()
             }
 
