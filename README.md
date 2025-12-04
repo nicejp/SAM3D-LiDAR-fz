@@ -57,6 +57,52 @@ export PYTHONPATH=/workspace:/workspace/sam3:$PYTHONPATH
 
 ### 3. iPadアプリのセットアップ
 
+#### 要件
+
+- iPad Pro 第3世代以降（LiDAR搭載モデル）
+- iOS 17.0以上
+- Xcode 15.0以上（Mac）
+
+#### Xcodeプロジェクト作成
+
+1. Xcode → "Create New Project"
+2. iOS → App を選択
+3. 設定:
+   - **Product Name:** DisasterScanner
+   - **Interface:** SwiftUI
+   - **Language:** Swift
+4. 保存先: `ipad_app/` ディレクトリを選択
+
+#### ソースファイル追加
+
+`ipad_app/Sources/` フォルダ内のファイルをXcodeプロジェクトに追加:
+
+```
+Sources/
+├── ContentView.swift   # メインUI（既存ファイルを置き換え）
+└── ARManager.swift     # LiDAR + RGB取得・送信
+```
+
+**追加方法:**
+1. Xcode → File → Add Files to "DisasterScanner"
+2. `Sources/` 内のファイルを選択
+3. "Copy items if needed" はオフにする
+
+#### Info.plist設定（重要）
+
+Xcode → TARGETS → DisasterScanner → Info で以下を追加:
+
+| Key | Value |
+|-----|-------|
+| Privacy - Camera Usage Description | LiDARスキャンのためにカメラを使用します |
+| Privacy - Local Network Usage Description | DGX Sparkサーバーにデータを送信します |
+
+#### ビルド＆実行
+
+1. iPad Pro を Mac に USB 接続
+2. Xcode 上部でデバイスを選択
+3. ▶️ ボタンでビルド＆実行
+
 詳細は [ipad_app/README.md](ipad_app/README.md) を参照してください。
 
 ## 使い方
@@ -170,6 +216,24 @@ experiments/session_YYYYMMDD_HHMMSS/
 - [SAM 3 GitHub](https://github.com/facebookresearch/sam3)
 - [SAM 3D Objects GitHub](https://github.com/facebookresearch/sam-3d-objects)
 - [Replica Dataset GitHub](https://github.com/facebookresearch/Replica-Dataset)
+
+## トラブルシューティング
+
+### iPadアプリ関連
+
+| 問題 | 解決策 |
+|------|--------|
+| 「LiDAR非対応デバイス」エラー | iPad Pro 第3世代以降が必要。シミュレーターでは動作しません |
+| 接続エラー | サーバーIP確認、WebSocketサーバー起動確認、同一ネットワーク接続確認 |
+| ビルドエラー（Optional binding） | ARManager.swift: `let capturedImage = frame.capturedImage` に変更 |
+| ビルドエラー（Variable never mutated） | `var packet` を `let packet` に変更 |
+
+### サーバー関連
+
+| 問題 | 解決策 |
+|------|--------|
+| websocketsインポートエラー | `pip install websockets` |
+| SAM 3が動作しない | Dockerコンテナ内でPYTHONPATHを設定 |
 
 ## ライセンス
 
