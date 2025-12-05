@@ -28,6 +28,37 @@ iPad ProのLiDARセンサーで取得した実測データと、SAM 3Dで生成�
 
 ## 環境構築
 
+### 0. WSL2初期セットアップ（SAM 3D Objects用）
+
+SAM 3D ObjectsはARM64 (DGX Spark) では動作しないため、WSL2 (x86_64) で実行する。
+
+**Windows側の準備:**
+```powershell
+# WSL2にUbuntuをインストール
+wsl --install -d Ubuntu-22.04
+```
+
+**WSL2 Ubuntu内の初期設定:**
+```bash
+# システム更新
+sudo apt update
+sudo apt upgrade -y
+
+# ifconfig用
+sudo apt install net-tools -y
+
+# SSH設定（ターミナルが見づらい場合に外部接続用）
+sudo apt install openssh-server -y
+sudo vi /etc/ssh/sshd_config
+# 以下を設定:
+# PermitEmptyPasswords no
+# PermitRootLogin no
+sudo service ssh restart
+
+# GPU確認
+nvidia-smi
+```
+
 ### 1. Python環境のセットアップ
 
 ```bash
