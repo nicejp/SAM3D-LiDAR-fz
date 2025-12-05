@@ -562,6 +562,34 @@ Loading SAM 3D Objects model...
 Model loaded successfully!
 ```
 
+#### Step 9: Web UIの起動と3D生成
+
+```bash
+# WSL2ターミナルで実行
+cd ~/SAM3D-LiDAR-fz
+git pull  # 最新版を取得
+conda activate sam3d
+
+# Web UIを起動
+python server/generation/sam3d_web_ui.py --port 8000
+```
+
+**DGX Sparkからアクセス:**
+1. WSL2のIPアドレスを確認: `hostname -I | awk '{print $1}'`
+2. **Firefox**で `http://<WSL2のIP>:8000` にアクセス（※Chromeではアップロードエラーが発生する場合あり）
+3. RGBA画像（背景透明PNG）をアップロード
+4. シード値を設定（オプション）
+5. 「3D生成」ボタンをクリック
+6. 生成完了後、PLYファイルをダウンロード
+
+**生成時間の目安（RTX 4060 Ti）:**
+- モデル読み込み: 約30秒（初回のみ）
+- 3D生成: 約7-8分
+
+**出力ファイル:**
+- 保存先: `~/sam3d_outputs/`
+- ファイル名: `sam3d_YYYYMMDD_HHMMSS_seed{シード値}.ply`
+
 ### DGX Spark (ARM64/aarch64) での追加手順
 
 DGX SparkはARM64アーキテクチャのため、PyTorch3Dのプリビルドホイールが存在しない。
@@ -895,6 +923,7 @@ export PYTHONPATH=/workspace:/workspace/sam3:$PYTHONPATH
 ### Phase 3: 3D生成・融合
 - [x] SAM 3D Objectsセットアップ ✅ (2025/12/5) - WSL2環境で動作確認
 - [x] SAM 3D Web UI実装 ✅ (2025/12/5) - リモートアクセス用Gradio UI
+- [x] SAM 3D 3D生成テスト ✅ (2025/12/5) - PLYファイル生成・ダウンロード成功
 - [ ] ICP位置合わせ実装
 - [ ] 可視判定実装
 - [ ] Blender Shrinkwrap実装
