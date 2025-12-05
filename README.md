@@ -107,6 +107,52 @@ docker commit sam3d-setup sam3d-lidar:sam3-ready
 docker rm sam3d-setup
 ```
 
+### 3. SAM 3D Objects のセットアップ (WSL2/Windows)
+
+WSL2環境（Ubuntu + NVIDIA GPU）でSAM 3D Objectsをセットアップする手順。
+
+```bash
+# 1. Conda環境を作成
+conda create -n sam3d python=3.11 -y
+conda activate sam3d
+
+# 2. PyTorch + CUDAをインストール
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
+
+# 3. SAM 3D Objectsをクローン
+cd ~
+git clone https://github.com/facebookresearch/sam-3d-objects.git
+cd sam-3d-objects
+
+# 4. 依存関係をインストール
+pip install "git+https://github.com/facebookresearch/fvcore"
+pip install "git+https://github.com/facebookresearch/iopath"
+pip install hydra-core omegaconf einops hatch-requirements-txt gradio pillow numpy scipy
+
+# 5. PyTorch3Dをソースビルド
+export FORCE_CUDA=1
+export TORCH_CUDA_ARCH_LIST="8.9"  # RTX 40シリーズの場合（詳細はPLAN.md参照）
+pip install "git+https://github.com/facebookresearch/pytorch3d.git@main" --no-build-isolation
+
+# 6. SAM 3D Objects本体をインストール
+pip install -e . --no-deps
+
+# 7. チェックポイントをダウンロード（要Hugging Faceアクセス申請）
+pip install huggingface_hub
+mkdir -p checkpoints/hf
+huggingface-cli download facebook/sam-3d-objects --local-dir checkpoints/hf
+
+# 8. 動作確認
+python -c "
+import sys; sys.path.append('notebook')
+from inference import Inference
+inference = Inference('checkpoints/hf/pipeline.yaml', compile=False)
+print('Model loaded successfully!')
+"
+```
+
+詳細な手順は [PLAN.md](PLAN.md) の「WSL2 (x86_64/Windows) でのセットアップ手順」を参照。
+
 **DGX Spark (ARM64) でのPyTorch3D追加インストール:**
 
 SAM 3D Objectsを使用する場合、PyTorch3Dが必要。DGX SparkはARM64アーキテクチャのため、ソースからビルドする。
@@ -124,10 +170,7 @@ export TORCH_CUDA_ARCH_LIST="12.0"
 pip install "git+https://github.com/facebookresearch/pytorch3d.git@main" --no-build-isolation
 ```
 
-**注意:** DGX Spark (ARM64) ではSAM 3D Objectsの完全動作は困難。代替としてWSL2 (x86_64) または Meta公式デモを使用:
-- **Meta Demo:** https://www.aidemos.meta.com/segment-anything/editor/convert-image-to-3d
-
-### 3. iPadアプリのセットアップ
+### 4. iPadアプリのセットアップ
 
 #### 要件
 
@@ -222,12 +265,30 @@ python -m server.phase2_full.sam3_demo
 python -m server.phase2_full.sam3_segmentation experiments/session_xxx --click 512,384
 ```
 
-### Step 4: SAM 3Dで3D生成（未実装）
+### Step 4: SAM 3Dで3D生成
 
+SAM 3D ObjectsはWSL2上で動作。Web UI経由でDGX Sparkからアクセス可能。
+
+**WSL2側でWeb UIを起動:**
 ```bash
-# SAM 3D Objectsで3Dメッシュ生成
-python -m server.generation.sam3d_generate experiments/session_xxx
+cd ~/sam-3d-objects
+conda activate sam3d
+
+# Web UIを起動（ポート8000）
+python ~/SAM3D-LiDAR-fz/server/generation/sam3d_web_ui.py --port 8000
 ```
+
+**DGX Spark側からアクセス:**
+```bash
+# WSL2のIPを確認（WSL2側で hostname -I）
+# ブラウザでアクセス: http://<WSL2のIP>:8000
+```
+
+**使い方:**
+1. Step 3で生成したRGBA画像をアップロード
+2. シード値を設定（オプション）
+3. 「3D生成」ボタンをクリック
+4. 生成されたPLYファイルをダウンロード
 
 ### Step 5: 融合処理（未実装）
 
@@ -252,7 +313,8 @@ SAM3D-LiDAR-fz/
 │   │   ├── sam3_segmentation.py
 │   │   ├── sam3_demo.py
 │   │   └── click_selector.py
-│   ├── generation/              # SAM 3D生成（未実装）
+│   ├── generation/              # SAM 3D生成
+│   │   └── sam3d_web_ui.py      # Web UI（WSL2用）
 │   ├── fusion/                  # 融合処理（未実装）
 │   └── orchestrator/            # LLMオーケストレーター（未実装）
 ├── ipad_app/                    # iPadアプリ (Swift)
