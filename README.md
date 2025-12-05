@@ -269,12 +269,38 @@ hostname -I | awk '{print $1}'
 - 保存先: `~/sam3d_outputs/`
 - ファイル名: `sam3d_YYYYMMDD_HHMMSS_seed{シード値}.ply`
 
-### Step 5: 融合処理（未実装）
+### Step 5: 融合処理
 
+SAM 3DのGaussian SplatとLiDAR点群を融合して、実測スケールの高精度3Dモデルを生成する。
+
+**DGX Sparkホスト上で実行:**
 ```bash
-# ICP位置合わせ + Shrinkwrap融合
-python -m server.fusion.run experiments/session_xxx
+cd ~/SAM3D-LiDAR-fz
+
+# 自動融合（推奨、SciPyベースで安定動作）
+python3 -m server.fusion.auto_fuse \
+    --sam3d ~/sam3d_output.ply \
+    --lidar ~/segmented_object.ply \
+    -o ~/fused_output.ply
 ```
+
+**オプション:**
+| オプション | 説明 | デフォルト |
+|-----------|------|-----------|
+| `--threshold` | スナップ閾値（正規化空間での距離） | 1.0 |
+| `--scale` | 出力スケール (lidar/sam3d) | lidar |
+| `--no-pointcloud` | 点群PLYを別途保存しない | - |
+
+**出力ファイル:**
+- `fused_output.ply` - 融合済みGaussian Splat（LiDARスケール）
+- `fused_output.points.ply` - 融合後の点群（確認用）
+
+**処理内容:**
+1. SAM 3D Gaussian Splatから位置を抽出
+2. 両点群を正規化（中心0、スケール1に統一）
+3. KDTreeで最近傍マッチング
+4. 閾値以内の点をスナップ
+5. LiDARスケールに変換してGaussian Splatを更新
 
 ## ディレクトリ構成
 
@@ -294,7 +320,12 @@ SAM3D-LiDAR-fz/
 │   │   └── click_selector.py
 │   ├── generation/              # SAM 3D生成
 │   │   └── sam3d_web_ui.py      # Web UI（WSL2用）
-│   ├── fusion/                  # 融合処理（未実装）
+│   ├── fusion/                  # 融合処理
+│   │   ├── auto_fuse.py         # 自動融合（推奨）
+│   │   ├── gaussian_splat.py    # Gaussian Splat変換
+│   │   ├── icp_alignment.py     # ICP位置合わせ
+│   │   ├── visibility_check.py  # 可視判定
+│   │   └── shrinkwrap.py        # Shrinkwrap処理
 │   └── orchestrator/            # LLMオーケストレーター（未実装）
 ├── ipad_app/                    # iPadアプリ (Swift)
 ├── blender_addon/               # Blenderアドオン

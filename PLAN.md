@@ -415,9 +415,33 @@ session_xxx/output/
 
 #### 融合パイプラインの使い方
 
-**基本的な使い方:**
+**推奨: 自動融合（auto_fuse）**
+
+SAM 3D Gaussian SplatとLiDAR点群を1コマンドで融合する。SciPyベースで実装されており、DGX Sparkホスト上で安定動作する。
+
 ```bash
-# 個別ファイルを指定して実行
+# 自動融合を実行
+python3 -m server.fusion.auto_fuse \
+    --sam3d sam3d_output.ply \
+    --lidar lidar_points.ply \
+    -o fused_output.ply
+
+# オプション
+python3 -m server.fusion.auto_fuse \
+    --sam3d sam3d_output.ply \
+    --lidar lidar_points.ply \
+    --threshold 0.5 \          # スナップ閾値（デフォルト1.0）
+    --scale lidar \            # 出力スケール（lidar/sam3d）
+    -o fused_output.ply
+```
+
+**出力ファイル:**
+- `fused_output.ply` - 融合済みGaussian Splat（LiDARスケール）
+- `fused_output.points.ply` - 融合後の点群（確認用）
+
+**Open3D版パイプライン（参考）:**
+```bash
+# 個別ファイルを指定して実行（Open3Dが必要、DGX Sparkでは不安定）
 python -m server.fusion.run \
     --sam3d sam3d_output.ply \
     --lidar lidar_points.ply \
@@ -889,6 +913,8 @@ python scripts/evaluate.py \
 | 可視判定 | `server/fusion/visibility_check.py` | レイキャスト | ✅ 完了 |
 | 部分的吸着 | `server/fusion/shrinkwrap.py` | Open3D/Blender Shrinkwrap | ✅ 完了 |
 | 融合パイプライン | `server/fusion/run.py` | 全モジュール統合 | ✅ 完了 |
+| **自動融合** | `server/fusion/auto_fuse.py` | SciPyベース自動融合 | ✅ 完了 |
+| Gaussian Splat変換 | `server/fusion/gaussian_splat.py` | GS PLY読み書き | ✅ 完了 |
 | LLMオーケストレーター | `server/orchestrator/agent.py` | エージェント | 未実装 |
 
 ---
