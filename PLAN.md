@@ -1160,6 +1160,13 @@ recording/
 
 #### 実装計画
 
+- [x] gpt-oss 120bセットアップ ✅
+  - ollamaでダウンロード済み
+  - `sudo systemctl start ollama` で起動
+  - `ollama run gpt-oss:120b` で動作確認済み
+- [x] DGX SparkにClaude Desktopセットアップ ✅
+  - Claude Desktopインストール済み
+  - Blender MCP連携設定完了
 - [ ] ツール定義
   - SAM 3セグメンテーション実行
   - SAM 3D 3D生成実行
