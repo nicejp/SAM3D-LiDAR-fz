@@ -1033,6 +1033,45 @@ DGX Spark                              WSL2
 - [x] 可視判定実装 ✅ (2025/12/5) - `server/fusion/visibility_check.py`
 - [x] Blender Shrinkwrap実装 ✅ (2025/12/5) - `server/fusion/shrinkwrap.py`
 - [x] 融合パイプライン統合 ✅ (2025/12/5) - `server/fusion/run.py`
+- [x] 自動融合プログラム実装 ✅ (2025/12/5) - `server/fusion/auto_fuse.py`
+
+### Phase 3.5: 多視点LiDAR融合（高密度化）
+
+**課題:** 単一フレームのLiDARデータが粗すぎて、SAM 3Dとの融合で品質が低下する
+
+**解決策:** SAM 2のビデオトラッキング機能を使用して、複数フレームの点群を自動統合
+
+**実装計画:**
+- [ ] SAM 2ビデオトラッキング統合
+  - 1フレームでクリックセグメント → 他フレームに自動伝播
+  - `server/multiview/sam2_tracker.py`
+- [ ] 多視点点群統合
+  - 各フレームからセグメント点群を抽出
+  - ICP位置合わせで統合
+  - `server/multiview/pointcloud_fusion.py`
+- [ ] 統合パイプライン
+  - セッションディレクトリから自動処理
+  - `server/multiview/run.py`
+
+**処理フロー:**
+```
+フレーム0でクリック
+    ↓
+SAM 2がフレーム1〜Nにマスク伝播
+    ↓
+各フレームの点群を抽出
+    ↓
+カメラパラメータで位置合わせ
+    ↓
+統合点群（高密度）
+    ↓
+SAM 3Dと融合
+```
+
+**期待効果:**
+- 点群密度: 4,831点 → 50,000点以上（10フレーム統合時）
+- 遮蔽部分の補完
+- ノイズ平均化による精度向上
 
 ### Phase 4: LLMオーケストレーション
 - [ ] ツール定義
