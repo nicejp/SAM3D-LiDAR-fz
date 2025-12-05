@@ -960,42 +960,58 @@ export PYTHONPATH=/workspace:/workspace/sam3:$PYTHONPATH
 
 ### 融合パイプライン用のセットアップ
 
-融合パイプライン（ICP位置合わせ、可視判定、Shrinkwrap）はSAM 3と同じDockerコンテナで実行できる。
+融合パイプライン（ICP位置合わせ、可視判定、Shrinkwrap）は**DGX Sparkのホスト上**で実行する。
 
-**Open3Dのインストール:**
+**注意:** SAM 3用DockerコンテナはPython 3.12を使用しており、Open3DはPython 3.12に対応していない（3.8〜3.11のみ）。そのため融合パイプラインはDockerコンテナ内ではなくホスト上で実行する。
+
+**処理の使い分け:**
+
+| 処理 | 実行場所 | 理由 |
+|-----|---------|------|
+| LiDAR点群取得 | DGX Spark (ホスト) | WebSocket受信 |
+| SAM 3セグメンテーション | DGX Spark (Docker) | Python 3.12 + SAM 3 |
+| SAM 3D 3D生成 | WSL2 | PyTorch3D必要 |
+| **融合パイプライン** | **DGX Spark (ホスト)** | Open3D (Python 3.11以下) |
+
+**DGX Sparkホスト上でのセットアップ:**
 ```bash
-# SAM 3コンテナ内で実行
+# Pythonバージョン確認（3.11以下が必要）
+python3 --version
+
+# Open3Dをインストール
 pip install open3d
 
 # 動作確認
-python -c "import open3d; print(f'Open3D {open3d.__version__} OK')"
+python3 -c "import open3d; print(f'Open3D {open3d.__version__} OK')"
 ```
 
 **融合パイプラインの動作確認:**
 ```bash
-cd /workspace
-export PYTHONPATH=/workspace:/workspace/sam3:$PYTHONPATH
+cd ~/SAM3D-LiDAR-fz
 
 # ヘルプ表示
-python -m server.fusion.icp_alignment --help
-python -m server.fusion.visibility_check --help
-python -m server.fusion.shrinkwrap --help
+python3 -m server.fusion.icp_alignment --help
+python3 -m server.fusion.visibility_check --help
+python3 -m server.fusion.shrinkwrap --help
 
 # パイプライン全体
-python -m server.fusion.run --help
+python3 -m server.fusion.run --help
 ```
 
-**イメージの保存（オプション）:**
-Open3Dをインストールした状態を保存する場合:
-```bash
-# コンテナIDを確認
-docker ps
-
-# 新しいイメージとして保存
-docker commit <container_id> lidar-llm-mcp:sam3-fusion
+**データフロー:**
 ```
-
-次回から `lidar-llm-mcp:sam3-fusion` を使えばOpen3Dが入った状態で起動できる。
+DGX Spark                              WSL2
+─────────────────────────────────────────────────────
+[Docker] SAM 3でRGBA生成
+    ↓
+    ──────→ RGBA画像転送 ──────→ [WSL2] SAM 3Dで3D生成
+                                        ↓
+    ←────── PLYファイル転送 ←──────────┘
+    ↓
+[ホスト] 融合パイプライン実行
+    ↓
+高精度3Dモデル完成
+```
 
 ---
 
