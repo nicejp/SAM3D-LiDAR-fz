@@ -234,12 +234,30 @@ python -m server.phase2_full.sam3_demo
 python -m server.phase2_full.sam3_segmentation experiments/session_xxx --click 512,384
 ```
 
-### Step 4: SAM 3Dで3D生成（未実装）
+### Step 4: SAM 3Dで3D生成
 
+SAM 3D ObjectsはWSL2上で動作。Web UI経由でDGX Sparkからアクセス可能。
+
+**WSL2側でWeb UIを起動:**
 ```bash
-# SAM 3D Objectsで3Dメッシュ生成
-python -m server.generation.sam3d_generate experiments/session_xxx
+cd ~/sam-3d-objects
+conda activate sam3d
+
+# Web UIを起動（ポート7861）
+python ~/SAM3D-LiDAR-fz/server/generation/sam3d_web_ui.py --port 7861
 ```
+
+**DGX Spark側からアクセス:**
+```bash
+# WSL2のIPを確認（WSL2側で hostname -I）
+# ブラウザでアクセス: http://<WSL2のIP>:7861
+```
+
+**使い方:**
+1. Step 3で生成したRGBA画像をアップロード
+2. シード値を設定（オプション）
+3. 「3D生成」ボタンをクリック
+4. 生成されたPLYファイルをダウンロード
 
 ### Step 5: 融合処理（未実装）
 
@@ -264,7 +282,8 @@ SAM3D-LiDAR-fz/
 │   │   ├── sam3_segmentation.py
 │   │   ├── sam3_demo.py
 │   │   └── click_selector.py
-│   ├── generation/              # SAM 3D生成（未実装）
+│   ├── generation/              # SAM 3D生成
+│   │   └── sam3d_web_ui.py      # Web UI（WSL2用）
 │   ├── fusion/                  # 融合処理（未実装）
 │   └── orchestrator/            # LLMオーケストレーター（未実装）
 ├── ipad_app/                    # iPadアプリ (Swift)
