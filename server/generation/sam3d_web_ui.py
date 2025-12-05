@@ -72,10 +72,10 @@ def generate_3d(
         progress: Gradio progress bar
 
     Returns:
-        (ply_path, status_message)
+        (ply_path, status_message, file_path_str)
     """
     if image is None:
-        return None, "画像をアップロードしてください"
+        return None, "画像をアップロードしてください", ""
 
     try:
         progress(0.1, desc="モデルを読み込み中...")
@@ -123,12 +123,12 @@ def generate_3d(
                  f"サイズ: {file_size:.1f} KB\n" \
                  f"シード: {seed}"
 
-        return ply_path, status
+        return ply_path, status, ply_path
 
     except Exception as e:
         import traceback
         error_msg = f"エラー: {str(e)}\n\n{traceback.format_exc()}"
-        return None, error_msg
+        return None, error_msg, ""
 
 
 def create_ui():
@@ -178,7 +178,13 @@ def create_ui():
                 )
 
                 ply_output = gr.File(
-                    label="生成されたPLYファイル"
+                    label="生成されたPLYファイル（クリックでダウンロード）"
+                )
+
+                # ダウンロードパス表示
+                download_path = gr.Textbox(
+                    label="出力ファイルパス",
+                    interactive=False
                 )
 
         # サンプル画像セクション
@@ -199,7 +205,7 @@ def create_ui():
         generate_btn.click(
             fn=generate_3d,
             inputs=[input_image, seed_input],
-            outputs=[ply_output, status_output]
+            outputs=[ply_output, status_output, download_path]
         )
 
         # フッター
