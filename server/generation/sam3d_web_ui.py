@@ -141,7 +141,6 @@ def create_ui():
 
     with gr.Blocks(
         title="SAM 3D Objects Web UI",
-        theme=gr.themes.Soft(),
         css="""
         .main-title { text-align: center; margin-bottom: 20px; }
         .status-box { font-family: monospace; }
@@ -239,8 +238,8 @@ def main():
     parser = argparse.ArgumentParser(description="SAM 3D Objects Web UI")
     parser.add_argument("--host", type=str, default="0.0.0.0",
                         help="Host to bind (default: 0.0.0.0)")
-    parser.add_argument("--port", type=int, default=7861,
-                        help="Port to bind (default: 7861)")
+    parser.add_argument("--port", type=int, default=8000,
+                        help="Port to bind (default: 8000)")
     parser.add_argument("--share", action="store_true",
                         help="Create public Gradio link")
     parser.add_argument("--sam3d-path", type=str, default=None,

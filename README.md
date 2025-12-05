@@ -243,14 +243,14 @@ SAM 3D ObjectsはWSL2上で動作。Web UI経由でDGX Sparkからアクセス�
 cd ~/sam-3d-objects
 conda activate sam3d
 
-# Web UIを起動（ポート7861）
-python ~/SAM3D-LiDAR-fz/server/generation/sam3d_web_ui.py --port 7861
+# Web UIを起動（ポート8000）
+python ~/SAM3D-LiDAR-fz/server/generation/sam3d_web_ui.py --port 8000
 ```
 
 **DGX Spark側からアクセス:**
 ```bash
 # WSL2のIPを確認（WSL2側で hostname -I）
-# ブラウザでアクセス: http://<WSL2のIP>:7861
+# ブラウザでアクセス: http://<WSL2のIP>:8000
 ```
 
 **使い方:**
