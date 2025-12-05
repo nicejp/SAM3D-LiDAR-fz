@@ -1160,6 +1160,13 @@ recording/
 
 #### 実装計画
 
+- [x] gpt-oss 120bセットアップ ✅
+  - ollamaでダウンロード済み
+  - `sudo systemctl start ollama` で起動
+  - `ollama run gpt-oss:120b` で動作確認済み
+- [x] DGX SparkにClaude Desktopセットアップ ✅
+  - Claude Desktopインストール済み
+  - Blender MCP連携設定完了
 - [ ] ツール定義
   - SAM 3セグメンテーション実行
   - SAM 3D 3D生成実行
@@ -1298,8 +1305,10 @@ Replica Datasetを使用して、3段階の手法を比較評価する。
 
 #### 実装計画
 
+- [x] Replica Datasetダウンロード ✅
+  - `~/datasets/Replica-Dataset/` に保存済み
+  - 18シーンの高精度3D室内データ
 - [ ] Replica Datasetセットアップ
-  - データセットダウンロード
   - RGB/深度/Ground Truth抽出スクリプト
   - `scripts/extract_replica_frames.py`
 - [ ] 評価スクリプト作成
