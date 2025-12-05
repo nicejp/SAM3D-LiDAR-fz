@@ -240,24 +240,34 @@ SAM 3D ObjectsはWSL2上で動作。Web UI経由でDGX Sparkからアクセス�
 
 **WSL2側でWeb UIを起動:**
 ```bash
-cd ~/sam-3d-objects
+# WSL2ターミナルを開く
+cd ~/SAM3D-LiDAR-fz
+git pull  # 最新版を取得
 conda activate sam3d
 
 # Web UIを起動（ポート8000）
-python ~/SAM3D-LiDAR-fz/server/generation/sam3d_web_ui.py --port 8000
+python server/generation/sam3d_web_ui.py --port 8000
 ```
 
 **DGX Spark側からアクセス:**
 ```bash
-# WSL2のIPを確認（WSL2側で hostname -I）
-# ブラウザでアクセス: http://<WSL2のIP>:8000
+# WSL2のIPを確認（WSL2側で実行）
+hostname -I | awk '{print $1}'
+
+# Firefoxでアクセス（※Chromeではアップロードエラーが発生する場合あり）
+# http://<WSL2のIP>:8000
 ```
 
 **使い方:**
-1. Step 3で生成したRGBA画像をアップロード
-2. シード値を設定（オプション）
+1. Step 3で生成したRGBA画像（背景透明PNG）をアップロード
+2. シード値を設定（オプション、再現性のため）
 3. 「3D生成」ボタンをクリック
-4. 生成されたPLYファイルをダウンロード
+4. 生成完了まで待機（約7-8分、RTX 4060 Ti基準）
+5. 「生成されたPLYファイル」をクリックしてダウンロード
+
+**出力:**
+- 保存先: `~/sam3d_outputs/`
+- ファイル名: `sam3d_YYYYMMDD_HHMMSS_seed{シード値}.ply`
 
 ### Step 5: 融合処理（未実装）
 
