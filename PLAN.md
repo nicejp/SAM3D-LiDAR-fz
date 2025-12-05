@@ -1217,10 +1217,106 @@ recording/
 - 成功条件: 全メトリクスが閾値以内
 
 ### Phase 5: 評価
+
+**目的:** 提案手法の有効性を定量的に実証する
+
+#### 評価フレームワーク
+
+Replica Datasetを使用して、3段階の手法を比較評価する。
+
+```
+┌────────────────────────────────────────────────────────────────┐
+│ Replica Dataset                                                │
+│   RGB画像 + 深度/点群 + Ground Truth 3Dメッシュ               │
+└────────────────────────────────────────────────────────────────┘
+                              ↓
+┌────────────────────────────────────────────────────────────────┐
+│ (1) SAM 3D単体                                                 │
+│     RGB → SAM 3D → 3Dモデル                                   │
+│     ※ベースライン（比較対象）                                 │
+└────────────────────────────────────────────────────────────────┘
+                              ↓
+┌────────────────────────────────────────────────────────────────┐
+│ (2) SAM 3D + LiDAR融合                                         │
+│     RGB → SAM 3D → 融合(auto_fuse) → 精緻化モデル             │
+│     ※提案手法の基本効果                                       │
+└────────────────────────────────────────────────────────────────┘
+                              ↓
+┌────────────────────────────────────────────────────────────────┐
+│ (3) SAM 3D + LiDAR融合 + LLMオーケストレーション               │
+│     RGB → SAM 3D → 融合 → LLM評価・リトライ → 最適化モデル    │
+│     ※提案手法の完全版                                         │
+└────────────────────────────────────────────────────────────────┘
+```
+
+#### 比較評価表（論文用）
+
+| 手法 | Chamfer Distance↓ | IoU↑ | 寸法誤差↓ |
+|------|------------------|------|----------|
+| (1) SAM 3D単体 | - | - | - |
+| (2) + LiDAR融合 | - | - | - |
+| (3) + LLM最適化 | - | - | - |
+| Ground Truth | 0.00 | 1.00 | 0.0% |
+
+#### 研究の新規性を示すポイント
+
+| 比較 | 示せること |
+|------|-----------|
+| (1) vs (2) | LiDAR融合による精度向上効果 |
+| (2) vs (3) | LLMオーケストレーションによる追加改善 |
+| (1) vs (3) | 提案手法全体の効果 |
+
+#### 実装計画
+
 - [ ] Replica Datasetセットアップ
+  - データセットダウンロード
+  - RGB/深度/Ground Truth抽出スクリプト
+  - `scripts/extract_replica_frames.py`
 - [ ] 評価スクリプト作成
+  - Chamfer Distance計算
+  - IoU計算
+  - 寸法誤差計算
+  - `server/evaluation/metrics.py`
+- [ ] 自動評価パイプライン
+  - 全シーン一括評価
+  - 結果CSV/JSON出力
+  - `server/evaluation/run_evaluation.py`
 - [ ] 定量評価実施
+  - 複数シーンで評価
+  - 統計処理（平均、標準偏差）
 - [ ] 結果まとめ
+  - 比較表作成
+  - グラフ生成
+  - 論文用図表
+
+#### 評価手順
+
+```bash
+# 1. Replica Datasetから画像・深度を取得
+python scripts/extract_replica_frames.py datasets/Replica/room_0
+
+# 2. 各手法で3Dモデル生成
+# (1) SAM 3D単体
+python -m server.generation.sam3d_generate input.png -o sam3d_only.ply
+
+# (2) SAM 3D + LiDAR融合
+python -m server.fusion.auto_fuse \
+    --sam3d sam3d_only.ply \
+    --lidar replica_depth.ply \
+    -o fused.ply
+
+# (3) SAM 3D + LiDAR + LLM最適化
+python -m server.orchestrator.agent \
+    --input input.png \
+    --lidar replica_depth.ply \
+    -o optimized.ply
+
+# 3. 評価スクリプトを実行
+python -m server.evaluation.run_evaluation \
+    --predictions sam3d_only.ply fused.ply optimized.ply \
+    --ground_truth datasets/Replica/room_0/mesh.ply \
+    -o evaluation_results.json
+```
 
 ---
 
