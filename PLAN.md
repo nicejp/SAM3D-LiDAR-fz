@@ -958,6 +958,45 @@ export PYTHONPATH=/workspace:/workspace/sam3:$PYTHONPATH
 | `--ulimit memlock=-1` | メモリロック制限を解除 |
 | `--network=host` | ホストのネットワークを直接使用 |
 
+### 融合パイプライン用のセットアップ
+
+融合パイプライン（ICP位置合わせ、可視判定、Shrinkwrap）はSAM 3と同じDockerコンテナで実行できる。
+
+**Open3Dのインストール:**
+```bash
+# SAM 3コンテナ内で実行
+pip install open3d
+
+# 動作確認
+python -c "import open3d; print(f'Open3D {open3d.__version__} OK')"
+```
+
+**融合パイプラインの動作確認:**
+```bash
+cd /workspace
+export PYTHONPATH=/workspace:/workspace/sam3:$PYTHONPATH
+
+# ヘルプ表示
+python -m server.fusion.icp_alignment --help
+python -m server.fusion.visibility_check --help
+python -m server.fusion.shrinkwrap --help
+
+# パイプライン全体
+python -m server.fusion.run --help
+```
+
+**イメージの保存（オプション）:**
+Open3Dをインストールした状態を保存する場合:
+```bash
+# コンテナIDを確認
+docker ps
+
+# 新しいイメージとして保存
+docker commit <container_id> lidar-llm-mcp:sam3-fusion
+```
+
+次回から `lidar-llm-mcp:sam3-fusion` を使えばOpen3Dが入った状態で起動できる。
+
 ---
 
 ## 開発フェーズ
