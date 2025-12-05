@@ -413,6 +413,59 @@ session_xxx/output/
 └── quality_report.json  # 品質レポート
 ```
 
+#### 融合パイプラインの使い方
+
+**基本的な使い方:**
+```bash
+# 個別ファイルを指定して実行
+python -m server.fusion.run \
+    --sam3d sam3d_output.ply \
+    --lidar lidar_points.ply \
+    --camera 0 0 2 \
+    -o fused_output.ply
+
+# セッションディレクトリから自動検出
+python -m server.fusion.run experiments/session_xxx
+```
+
+**各モジュールの個別実行:**
+```bash
+# ICP位置合わせのみ
+python -m server.fusion.icp_alignment sam3d.ply lidar.ply -o aligned.ply --visualize
+
+# 可視判定のみ
+python -m server.fusion.visibility_check mesh.ply --camera 0 0 2 --visualize
+
+# Shrinkwrapのみ
+python -m server.fusion.shrinkwrap mesh.ply lidar.ply -o shrinkwrap_result.ply
+```
+
+**Pythonからの使用:**
+```python
+from server.fusion import ICPAligner, VisibilityChecker, ShrinkwrapProcessor
+from server.fusion.run import FusionPipeline
+import numpy as np
+
+# 方法1: パイプライン全体を実行
+pipeline = FusionPipeline()
+result = pipeline.run(
+    sam3d_mesh_path="sam3d_output.ply",
+    lidar_pcd_path="lidar_points.ply",
+    camera_positions=np.array([0, 0, 2]),
+    output_path="fused_output.ply"
+)
+
+# 方法2: 個別モジュールを使用
+aligner = ICPAligner()
+icp_result = aligner.align("sam3d.ply", "lidar.ply")
+
+checker = VisibilityChecker()
+visible_mask = checker.compute_visibility(mesh, camera_positions)
+
+shrinkwrap = ShrinkwrapProcessor()
+shrinkwrap_result = shrinkwrap.process("mesh.ply", "lidar.ply", visible_mask)
+```
+
 ---
 
 ## SAM 3D Objectsのセットアップ
@@ -859,13 +912,14 @@ python scripts/evaluate.py \
 
 ### 新規開発が必要なもの
 
-| コンポーネント | ファイル | 内容 |
-|--------------|----------|------|
-| SAM 3D統合 | `server/generation/sam3d_generate.py` | SAM 3D Objects呼び出し |
-| ICP位置合わせ | `server/fusion/icp_alignment.py` | Open3D ICP |
-| 可視判定 | `server/fusion/visibility_check.py` | レイキャスト |
-| 部分的吸着 | `server/fusion/shrinkwrap.py` | Blender Shrinkwrap |
-| LLMオーケストレーター | `server/orchestrator/agent.py` | エージェント |
+| コンポーネント | ファイル | 内容 | 状態 |
+|--------------|----------|------|------|
+| SAM 3D Web UI | `server/generation/sam3d_web_ui.py` | SAM 3D Objects Gradio UI | ✅ 完了 |
+| ICP位置合わせ | `server/fusion/icp_alignment.py` | Open3D ICP | ✅ 完了 |
+| 可視判定 | `server/fusion/visibility_check.py` | レイキャスト | ✅ 完了 |
+| 部分的吸着 | `server/fusion/shrinkwrap.py` | Open3D/Blender Shrinkwrap | ✅ 完了 |
+| 融合パイプライン | `server/fusion/run.py` | 全モジュール統合 | ✅ 完了 |
+| LLMオーケストレーター | `server/orchestrator/agent.py` | エージェント | 未実装 |
 
 ---
 
@@ -924,9 +978,10 @@ export PYTHONPATH=/workspace:/workspace/sam3:$PYTHONPATH
 - [x] SAM 3D Objectsセットアップ ✅ (2025/12/5) - WSL2環境で動作確認
 - [x] SAM 3D Web UI実装 ✅ (2025/12/5) - リモートアクセス用Gradio UI
 - [x] SAM 3D 3D生成テスト ✅ (2025/12/5) - PLYファイル生成・ダウンロード成功
-- [ ] ICP位置合わせ実装
-- [ ] 可視判定実装
-- [ ] Blender Shrinkwrap実装
+- [x] ICP位置合わせ実装 ✅ (2025/12/5) - `server/fusion/icp_alignment.py`
+- [x] 可視判定実装 ✅ (2025/12/5) - `server/fusion/visibility_check.py`
+- [x] Blender Shrinkwrap実装 ✅ (2025/12/5) - `server/fusion/shrinkwrap.py`
+- [x] 融合パイプライン統合 ✅ (2025/12/5) - `server/fusion/run.py`
 
 ### Phase 4: LLMオーケストレーション
 - [ ] ツール定義
