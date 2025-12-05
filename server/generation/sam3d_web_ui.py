@@ -3,25 +3,19 @@
 SAM 3D Objects Web UI
 
 WSL2上で動作するSAM 3D ObjectsをラップするGradio Web UI。
-DGX Sparkなど他のホストから、RGBAファイルをアップロードして3D生成し、
-PLYファイルをダウンロードできる。
+ローカルファイルパスを指定して3D生成し、PLYファイルをダウンロードできる。
 
 使い方:
     cd ~/sam-3d-objects
     conda activate sam3d
-    python /path/to/sam3d_web_ui.py
+    python /path/to/sam3d_web_ui.py --port 8000
 
-    または
-
-    python -m server.generation.sam3d_web_ui
-
-ブラウザでアクセス:
-    http://<WSL2のIP>:7861
+ブラウザでアクセス（WSL2内から）:
+    http://localhost:8000
 """
 
 import os
 import sys
-import tempfile
 import datetime
 from pathlib import Path
 
@@ -37,6 +31,10 @@ sys.path.insert(0, os.path.join(SAM3D_PATH, "notebook"))
 # 出力ディレクトリ
 OUTPUT_DIR = os.environ.get("SAM3D_OUTPUT_DIR", os.path.expanduser("~/sam3d_outputs"))
 os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+# 入力用ディレクトリ（DGX Sparkからscpで転送する先）
+INPUT_DIR = os.environ.get("SAM3D_INPUT_DIR", os.path.expanduser("~/sam3d_inputs"))
+os.makedirs(INPUT_DIR, exist_ok=True)
 
 # グローバル変数でモデルをキャッシュ
 _inference = None
@@ -63,45 +61,61 @@ def load_model():
     return _inference
 
 
-def generate_3d(
-    image: np.ndarray,
+def list_input_files():
+    """入力ディレクトリのPNGファイル一覧を取得"""
+    files = list(Path(INPUT_DIR).glob("*.png"))
+    files.extend(Path(INPUT_DIR).glob("*.PNG"))
+    return sorted([str(f) for f in files], key=os.path.getmtime, reverse=True)
+
+
+def generate_3d_from_path(
+    file_path: str,
     seed: int = 42,
     progress=gr.Progress()
-) -> tuple[str, str]:
+) -> tuple:
     """
-    RGBA画像から3Dオブジェクトを生成
+    ファイルパスから3Dオブジェクトを生成
 
     Args:
-        image: RGBA画像 (numpy array)
+        file_path: RGBA画像のパス
         seed: ランダムシード
         progress: Gradio progress bar
 
     Returns:
-        (ply_path, status_message)
+        (ply_path, status_message, preview_image)
     """
-    if image is None:
-        return None, "画像をアップロードしてください"
+    if not file_path or not file_path.strip():
+        return None, "ファイルパスを入力してください", None
+
+    file_path = file_path.strip()
+
+    if not os.path.exists(file_path):
+        return None, f"ファイルが見つかりません: {file_path}", None
 
     try:
-        progress(0.1, desc="モデルを読み込み中...")
+        progress(0.1, desc="画像を読み込み中...")
+
+        # 画像を読み込み
+        image = Image.open(file_path)
+        if image.mode != "RGBA":
+            image = image.convert("RGBA")
+
+        image_np = np.array(image)
+
+        # プレビュー用に画像を保持
+        preview = image_np.copy()
+
+        progress(0.2, desc="モデルを読み込み中...")
         inference = load_model()
 
         # RGBA画像を処理
-        if image.shape[-1] == 4:
-            # アルファチャンネルからマスクを作成
-            rgb = image[:, :, :3]
-            alpha = image[:, :, 3]
-            mask = (alpha > 128).astype(np.uint8)
-        elif image.shape[-1] == 3:
-            # RGBのみの場合、全体をマスクとする
-            rgb = image
-            mask = np.ones((image.shape[0], image.shape[1]), dtype=np.uint8)
-        else:
-            return None, f"サポートされていない画像形式: {image.shape}"
+        rgb = image_np[:, :, :3]
+        alpha = image_np[:, :, 3]
+        mask = (alpha > 128).astype(np.uint8)
 
         # マスクが空でないか確認
         if mask.sum() == 0:
-            return None, "マスクが空です。アルファチャンネルにオブジェクト領域が含まれていません。"
+            return None, "マスクが空です。アルファチャンネルにオブジェクト領域が含まれていません。", preview
 
         progress(0.3, desc="3Dオブジェクトを生成中...")
 
@@ -112,7 +126,8 @@ def generate_3d(
 
         # 出力ファイル名を生成
         timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        ply_filename = f"sam3d_{timestamp}_seed{seed}.ply"
+        input_name = Path(file_path).stem
+        ply_filename = f"sam3d_{input_name}_{timestamp}_seed{seed}.ply"
         ply_path = os.path.join(OUTPUT_DIR, ply_filename)
 
         # PLYファイルを保存
@@ -123,17 +138,25 @@ def generate_3d(
         # ファイルサイズを取得
         file_size = os.path.getsize(ply_path) / 1024  # KB
 
-        status = f"✅ 生成完了!\n" \
-                 f"ファイル: {ply_filename}\n" \
+        status = f"生成完了!\n" \
+                 f"出力: {ply_path}\n" \
                  f"サイズ: {file_size:.1f} KB\n" \
                  f"シード: {seed}"
 
-        return ply_path, status
+        return ply_path, status, preview
 
     except Exception as e:
         import traceback
-        error_msg = f"❌ エラー: {str(e)}\n\n{traceback.format_exc()}"
-        return None, error_msg
+        error_msg = f"エラー: {str(e)}\n\n{traceback.format_exc()}"
+        return None, error_msg, None
+
+
+def refresh_file_list():
+    """ファイル一覧を更新"""
+    files = list_input_files()
+    if files:
+        return gr.update(choices=files, value=files[0])
+    return gr.update(choices=[], value="")
 
 
 def create_ui():
@@ -141,27 +164,43 @@ def create_ui():
 
     with gr.Blocks() as demo:
         gr.Markdown(
-            """
+            f"""
             # SAM 3D Objects Web UI
 
-            RGBA画像（背景透明PNG）をアップロードして、3Dオブジェクトを生成します。
+            RGBA画像（背景透明PNG）から3Dオブジェクトを生成します。
 
-            **使い方:**
-            1. RGBA画像（背景透明のPNG）をアップロード
-            2. シード値を設定（オプション）
-            3. 「3D生成」ボタンをクリック
-            4. 生成されたPLYファイルをダウンロード
+            ## 使い方
+
+            ### DGX Sparkからファイルを転送:
+            ```bash
+            scp rgba_image.png nicejp@<WSL2のIP>:{INPUT_DIR}/
+            ```
+
+            ### または直接ファイルパスを入力
+
+            ---
             """
         )
 
         with gr.Row():
             with gr.Column(scale=1):
-                # 入力
-                input_image = gr.Image(
-                    label="RGBA画像（背景透明PNG）",
-                    type="numpy",
-                    image_mode="RGBA",
-                    height=400
+                # 入力ファイル選択
+                gr.Markdown("### 入力")
+
+                file_dropdown = gr.Dropdown(
+                    label=f"入力ファイル ({INPUT_DIR})",
+                    choices=list_input_files(),
+                    value=list_input_files()[0] if list_input_files() else "",
+                    allow_custom_value=True
+                )
+
+                refresh_btn = gr.Button("🔄 ファイル一覧を更新")
+
+                gr.Markdown("または直接パスを入力:")
+                file_path_input = gr.Textbox(
+                    label="ファイルパス",
+                    placeholder="/path/to/rgba_image.png",
+                    value=""
                 )
 
                 seed_input = gr.Number(
@@ -173,52 +212,77 @@ def create_ui():
                 )
 
                 generate_btn = gr.Button(
-                    "🚀 3D生成",
-                    variant="primary",
-                    size="lg"
+                    "3D生成",
+                    variant="primary"
                 )
 
             with gr.Column(scale=1):
+                # プレビュー
+                preview_image = gr.Image(
+                    label="入力画像プレビュー",
+                    type="numpy"
+                )
+
+        with gr.Row():
+            with gr.Column():
                 # 出力
                 status_output = gr.Textbox(
                     label="ステータス",
-                    lines=6,
+                    lines=5,
                     interactive=False
                 )
 
                 ply_output = gr.File(
-                    label="生成されたPLYファイル",
-                    file_count="single"
+                    label="生成されたPLYファイル"
                 )
-
-        # サンプル画像セクション
-        gr.Markdown("---")
-        gr.Markdown("### サンプル画像")
-
-        sample_dir = os.path.join(SAM3D_PATH, "demo/example_images")
-        if os.path.exists(sample_dir):
-            sample_images = list(Path(sample_dir).glob("*.png"))[:4]
-            if sample_images:
-                gr.Examples(
-                    examples=[[str(img)] for img in sample_images],
-                    inputs=[input_image],
-                    label="サンプル画像をクリックして使用"
-                )
-
-        # イベントハンドラ
-        generate_btn.click(
-            fn=generate_3d,
-            inputs=[input_image, seed_input],
-            outputs=[ply_output, status_output]
-        )
 
         # フッター
         gr.Markdown(
-            """
+            f"""
             ---
+            **出力先:** `{OUTPUT_DIR}`
+
             **SAM 3D Objects** by Meta AI |
             [GitHub](https://github.com/facebookresearch/sam-3d-objects)
             """
+        )
+
+        # イベントハンドラ
+        def get_path(dropdown, text_input):
+            """ドロップダウンまたはテキスト入力からパスを取得"""
+            if text_input and text_input.strip():
+                return text_input.strip()
+            return dropdown
+
+        def on_generate(dropdown, text_input, seed, progress=gr.Progress()):
+            path = get_path(dropdown, text_input)
+            return generate_3d_from_path(path, int(seed), progress)
+
+        generate_btn.click(
+            fn=on_generate,
+            inputs=[file_dropdown, file_path_input, seed_input],
+            outputs=[ply_output, status_output, preview_image]
+        )
+
+        refresh_btn.click(
+            fn=refresh_file_list,
+            outputs=[file_dropdown]
+        )
+
+        # ドロップダウン選択時にプレビュー表示
+        def preview_selected(path):
+            if path and os.path.exists(path):
+                try:
+                    img = Image.open(path)
+                    return np.array(img)
+                except:
+                    pass
+            return None
+
+        file_dropdown.change(
+            fn=preview_selected,
+            inputs=[file_dropdown],
+            outputs=[preview_image]
         )
 
     return demo
@@ -232,12 +296,12 @@ def main():
                         help="Host to bind (default: 0.0.0.0)")
     parser.add_argument("--port", type=int, default=8000,
                         help="Port to bind (default: 8000)")
-    parser.add_argument("--share", action="store_true",
-                        help="Create public Gradio link")
     parser.add_argument("--sam3d-path", type=str, default=None,
                         help="Path to sam-3d-objects directory")
     parser.add_argument("--output-dir", type=str, default=None,
                         help="Output directory for PLY files")
+    parser.add_argument("--input-dir", type=str, default=None,
+                        help="Input directory for RGBA images")
 
     args = parser.parse_args()
 
@@ -255,13 +319,23 @@ def main():
         OUTPUT_DIR = args.output_dir
         os.makedirs(OUTPUT_DIR, exist_ok=True)
 
+    if args.input_dir:
+        os.environ["SAM3D_INPUT_DIR"] = args.input_dir
+        global INPUT_DIR
+        INPUT_DIR = args.input_dir
+        os.makedirs(INPUT_DIR, exist_ok=True)
+
     print(f"""
 ╔═══════════════════════════════════════════════════════════════╗
 ║              SAM 3D Objects Web UI                            ║
 ╠═══════════════════════════════════════════════════════════════╣
 ║  SAM3D Path:  {SAM3D_PATH:<47} ║
+║  Input Dir:   {INPUT_DIR:<47} ║
 ║  Output Dir:  {OUTPUT_DIR:<47} ║
-║  Server:      http://{args.host}:{args.port:<38} ║
+║  Server:      http://localhost:{args.port:<35} ║
+╠═══════════════════════════════════════════════════════════════╣
+║  DGX Sparkからファイルを転送:                                 ║
+║    scp rgba_image.png nicejp@<IP>:{INPUT_DIR}/                ║
 ╚═══════════════════════════════════════════════════════════════╝
     """)
 
@@ -270,7 +344,7 @@ def main():
     demo.launch(
         server_name=args.host,
         server_port=args.port,
-        share=args.share
+        share=False
     )
 
 
