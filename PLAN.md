@@ -1305,8 +1305,10 @@ Replica Datasetを使用して、3段階の手法を比較評価する。
 
 #### 実装計画
 
+- [x] Replica Datasetダウンロード ✅
+  - `~/datasets/Replica-Dataset/` に保存済み
+  - 18シーンの高精度3D室内データ
 - [ ] Replica Datasetセットアップ
-  - データセットダウンロード
   - RGB/深度/Ground Truth抽出スクリプト
   - `scripts/extract_replica_frames.py`
 - [ ] 評価スクリプト作成
