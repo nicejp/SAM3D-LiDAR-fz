@@ -637,11 +637,11 @@ cd ~/sam-3d-objects
 conda activate sam3d
 
 # Web UIを起動
-python /path/to/SAM3D-LiDAR-fz/server/generation/sam3d_web_ui.py --port 7861
+python /path/to/SAM3D-LiDAR-fz/server/generation/sam3d_web_ui.py --port 8000
 
 # または、SAM3D-LiDAR-fzディレクトリから
 cd ~/SAM3D-LiDAR-fz
-python -m server.generation.sam3d_web_ui --port 7861
+python -m server.generation.sam3d_web_ui --port 8000
 ```
 
 **アクセス方法（DGX Spark側）:**
@@ -650,14 +650,14 @@ python -m server.generation.sam3d_web_ui --port 7861
 hostname -I | awk '{print $1}'
 
 # ブラウザでアクセス
-# http://<WSL2のIP>:7861
+# http://<WSL2のIP>:8000
 ```
 
 **オプション:**
 | オプション | 説明 | デフォルト |
 |-----------|------|-----------|
 | `--host` | バインドするホスト | 0.0.0.0 |
-| `--port` | ポート番号 | 7861 |
+| `--port` | ポート番号 | 8000 |
 | `--share` | Gradio公開リンクを作成 | False |
 | `--sam3d-path` | sam-3d-objectsディレクトリ | ~/sam-3d-objects |
 | `--output-dir` | PLY出力ディレクトリ | ~/sam3d_outputs |
