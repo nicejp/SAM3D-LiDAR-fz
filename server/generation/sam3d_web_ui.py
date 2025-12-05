@@ -268,7 +268,8 @@ def main():
     demo.launch(
         server_name=args.host,
         server_port=args.port,
-        share=args.share
+        share=args.share,
+        allowed_paths=[OUTPUT_DIR]
     )
 
 
