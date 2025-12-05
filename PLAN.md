@@ -627,6 +627,47 @@ output["gs"].save_ply("output.ply")
 | 入力マスク | バイナリマスク (対象物=1, 背景=0) |
 | 出力 | Gaussian Splat → PLYファイル |
 
+### Web UI（リモートアクセス用）
+
+WSL2上のSAM 3D Objectsに、DGX Sparkなど他のホストからアクセスするためのWeb UI。
+
+**起動方法（WSL2側）:**
+```bash
+cd ~/sam-3d-objects
+conda activate sam3d
+
+# Web UIを起動
+python /path/to/SAM3D-LiDAR-fz/server/generation/sam3d_web_ui.py --port 7861
+
+# または、SAM3D-LiDAR-fzディレクトリから
+cd ~/SAM3D-LiDAR-fz
+python -m server.generation.sam3d_web_ui --port 7861
+```
+
+**アクセス方法（DGX Spark側）:**
+```bash
+# WSL2のIPアドレスを確認（WSL2側で実行）
+hostname -I | awk '{print $1}'
+
+# ブラウザでアクセス
+# http://<WSL2のIP>:7861
+```
+
+**オプション:**
+| オプション | 説明 | デフォルト |
+|-----------|------|-----------|
+| `--host` | バインドするホスト | 0.0.0.0 |
+| `--port` | ポート番号 | 7861 |
+| `--share` | Gradio公開リンクを作成 | False |
+| `--sam3d-path` | sam-3d-objectsディレクトリ | ~/sam-3d-objects |
+| `--output-dir` | PLY出力ディレクトリ | ~/sam3d_outputs |
+
+**使い方:**
+1. RGBA画像（背景透明のPNG）をアップロード
+2. シード値を設定（オプション、再現性のため）
+3. 「3D生成」ボタンをクリック
+4. 生成されたPLYファイルをダウンロード
+
 ---
 
 ## LLM構成
@@ -823,7 +864,7 @@ export PYTHONPATH=/workspace:/workspace/sam3:$PYTHONPATH
 
 ### Phase 3: 3D生成・融合
 - [x] SAM 3D Objectsセットアップ ✅ (2025/12/5) - WSL2環境で動作確認
-- [ ] SAM 3D呼び出しモジュール実装
+- [x] SAM 3D Web UI実装 ✅ (2025/12/5) - リモートアクセス用Gradio UI
 - [ ] ICP位置合わせ実装
 - [ ] 可視判定実装
 - [ ] Blender Shrinkwrap実装
@@ -889,7 +930,8 @@ SAM3D-LiDAR-fz/
 │   │   ├── sam3_demo.py         # 流用
 │   │   └── click_selector.py    # 流用
 │   ├── generation/              # 新規
-│   │   └── sam3d_generate.py
+│   │   ├── sam3d_web_ui.py      # Web UI（WSL2用）
+│   │   └── sam3d_generate.py    # （予定）
 │   ├── fusion/                  # 新規
 │   │   ├── icp_alignment.py
 │   │   ├── visibility_check.py
