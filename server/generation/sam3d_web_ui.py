@@ -139,13 +139,7 @@ def generate_3d(
 def create_ui():
     """Gradio UIを作成"""
 
-    with gr.Blocks(
-        title="SAM 3D Objects Web UI",
-        css="""
-        .main-title { text-align: center; margin-bottom: 20px; }
-        .status-box { font-family: monospace; }
-        """
-    ) as demo:
+    with gr.Blocks() as demo:
         gr.Markdown(
             """
             # SAM 3D Objects Web UI
@@ -157,8 +151,7 @@ def create_ui():
             2. シード値を設定（オプション）
             3. 「3D生成」ボタンをクリック
             4. 生成されたPLYファイルをダウンロード
-            """,
-            elem_classes=["main-title"]
+            """
         )
 
         with gr.Row():
@@ -190,8 +183,7 @@ def create_ui():
                 status_output = gr.Textbox(
                     label="ステータス",
                     lines=6,
-                    interactive=False,
-                    elem_classes=["status-box"]
+                    interactive=False
                 )
 
                 ply_output = gr.File(
