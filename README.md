@@ -76,6 +76,52 @@ docker commit sam3d-setup sam3d-lidar:sam3-ready
 docker rm sam3d-setup
 ```
 
+### 3. SAM 3D Objects のセットアップ (WSL2/Windows)
+
+WSL2環境（Ubuntu + NVIDIA GPU）でSAM 3D Objectsをセットアップする手順。
+
+```bash
+# 1. Conda環境を作成
+conda create -n sam3d python=3.11 -y
+conda activate sam3d
+
+# 2. PyTorch + CUDAをインストール
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
+
+# 3. SAM 3D Objectsをクローン
+cd ~
+git clone https://github.com/facebookresearch/sam-3d-objects.git
+cd sam-3d-objects
+
+# 4. 依存関係をインストール
+pip install "git+https://github.com/facebookresearch/fvcore"
+pip install "git+https://github.com/facebookresearch/iopath"
+pip install hydra-core omegaconf einops hatch-requirements-txt gradio pillow numpy scipy
+
+# 5. PyTorch3Dをソースビルド
+export FORCE_CUDA=1
+export TORCH_CUDA_ARCH_LIST="8.9"  # RTX 40シリーズの場合（詳細はPLAN.md参照）
+pip install "git+https://github.com/facebookresearch/pytorch3d.git@main" --no-build-isolation
+
+# 6. SAM 3D Objects本体をインストール
+pip install -e . --no-deps
+
+# 7. チェックポイントをダウンロード（要Hugging Faceアクセス申請）
+pip install huggingface_hub
+mkdir -p checkpoints/hf
+huggingface-cli download facebook/sam-3d-objects --local-dir checkpoints/hf
+
+# 8. 動作確認
+python -c "
+import sys; sys.path.append('notebook')
+from inference import Inference
+inference = Inference('checkpoints/hf/pipeline.yaml', compile=False)
+print('Model loaded successfully!')
+"
+```
+
+詳細な手順は [PLAN.md](PLAN.md) の「WSL2 (x86_64/Windows) でのセットアップ手順」を参照。
+
 **DGX Spark (ARM64) でのPyTorch3D追加インストール:**
 
 SAM 3D Objectsを使用する場合、PyTorch3Dが必要。DGX SparkはARM64アーキテクチャのため、ソースからビルドする。
@@ -93,7 +139,7 @@ export TORCH_CUDA_ARCH_LIST="12.0"
 pip install "git+https://github.com/facebookresearch/pytorch3d.git@main" --no-build-isolation
 ```
 
-### 3. iPadアプリのセットアップ
+### 4. iPadアプリのセットアップ
 
 #### 要件
 

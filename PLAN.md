@@ -443,6 +443,125 @@ huggingface-cli download facebook/sam-3d-objects --local-dir checkpoints/sam-3d-
 python -c "from sam_3d_objects import Inference; print('SAM 3D Objects OK')"
 ```
 
+### WSL2 (x86_64/Windows) でのセットアップ手順
+
+WSL2 + NVIDIA GPU (例: GeForce RTX 4060 Ti) でのセットアップ手順。
+
+#### 前提条件
+
+- Windows 11 + WSL2 (Ubuntu 22.04/24.04)
+- NVIDIA GPU + ドライバー (Windows側にインストール)
+- Miniconda/Anaconda
+
+#### Step 1: Conda環境の作成
+
+```bash
+# sam3d専用環境を作成
+conda create -n sam3d python=3.11 -y
+conda activate sam3d
+```
+
+#### Step 2: PyTorch + CUDAのインストール
+
+```bash
+# PyTorch 2.5.1 + CUDA 12.4 (推奨)
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
+
+# CUDAが認識されているか確認
+python -c "import torch; print(f'CUDA available: {torch.cuda.is_available()}'); print(f'Device: {torch.cuda.get_device_name(0)}')"
+```
+
+#### Step 3: SAM 3D Objectsのクローン
+
+```bash
+cd ~
+git clone https://github.com/facebookresearch/sam-3d-objects.git
+cd sam-3d-objects
+```
+
+#### Step 4: 依存関係のインストール
+
+```bash
+# fvcore, iopath (PyTorch3Dの依存)
+pip install "git+https://github.com/facebookresearch/fvcore"
+pip install "git+https://github.com/facebookresearch/iopath"
+
+# その他の依存関係
+pip install hydra-core omegaconf einops hatch-requirements-txt
+pip install gradio pillow numpy scipy
+```
+
+#### Step 5: PyTorch3Dのインストール（ソースビルド）
+
+```bash
+# x86_64でもプリビルドホイールが対応していない場合、ソースビルドが必要
+
+# 環境変数を設定
+export FORCE_CUDA=1
+export TORCH_CUDA_ARCH_LIST="8.9"  # RTX 40シリーズの場合
+
+# ソースからビルド（約5-10分）
+pip install "git+https://github.com/facebookresearch/pytorch3d.git@main" --no-build-isolation
+```
+
+**TORCH_CUDA_ARCH_LISTの値:**
+| GPU | 値 |
+|-----|-----|
+| RTX 40シリーズ (4060Ti, 4070, 4080, 4090) | 8.9 |
+| RTX 30シリーズ (3060, 3070, 3080, 3090) | 8.6 |
+| RTX 20シリーズ | 7.5 |
+| DGX Spark GB110 | 12.0 |
+
+#### Step 6: SAM 3D Objects本体のインストール
+
+```bash
+cd ~/sam-3d-objects
+
+# 開発モードでインストール（依存関係は手動でインストール済みなので--no-deps）
+pip install -e . --no-deps
+```
+
+#### Step 7: チェックポイントのダウンロード
+
+```bash
+cd ~/sam-3d-objects
+
+# Hugging Face CLIをインストール
+pip install huggingface_hub
+
+# チェックポイントをダウンロード
+# ※事前にHugging Faceでfacebook/sam-3d-objectsへのアクセスリクエストが必要
+mkdir -p checkpoints/hf
+huggingface-cli download facebook/sam-3d-objects --local-dir checkpoints/hf
+```
+
+**注意:** Hugging Faceで https://huggingface.co/facebook/sam-3d-objects にアクセスし、「Request access」をクリックしてアクセス権を取得する必要があります（通常即時承認）。
+
+#### Step 8: 動作確認
+
+```bash
+cd ~/sam-3d-objects
+conda activate sam3d
+
+# モデル読み込みテスト
+python -c "
+import sys
+sys.path.append('notebook')
+from inference import Inference
+
+config_path = 'checkpoints/hf/pipeline.yaml'
+print('Loading SAM 3D Objects model...')
+inference = Inference(config_path, compile=False)
+print('Model loaded successfully!')
+"
+```
+
+成功すると以下が表示される:
+```
+Loading SAM 3D Objects model...
+Model loaded successfully!
+```
+
 ### DGX Spark (ARM64/aarch64) での追加手順
 
 DGX SparkはARM64アーキテクチャのため、PyTorch3Dのプリビルドホイールが存在しない。
@@ -703,7 +822,7 @@ export PYTHONPATH=/workspace:/workspace/sam3:$PYTHONPATH
 - [x] RGBA画像生成 ✅ (2025/12/4) - SAM 3D用背景透明画像出力
 
 ### Phase 3: 3D生成・融合
-- [ ] SAM 3D Objectsセットアップ
+- [x] SAM 3D Objectsセットアップ ✅ (2025/12/5) - WSL2環境で動作確認
 - [ ] SAM 3D呼び出しモジュール実装
 - [ ] ICP位置合わせ実装
 - [ ] 可視判定実装
