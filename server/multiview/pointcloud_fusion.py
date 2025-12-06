@@ -191,7 +191,13 @@ class MultiViewPointCloudFusion:
                     np.full(len(points), frame_idx, dtype=np.int32)
                 )
 
-            print(f"Frame {frame_idx}: {len(points)} points")
+            # カメラフレームマッピング情報を表示
+            camera_info = ""
+            if hasattr(self.loader, 'video_frame_to_camera_frame'):
+                camera_frame = self.loader.video_frame_to_camera_frame(frame_idx)
+                if camera_frame != frame_idx:
+                    camera_info = f" -> camera frame {camera_frame}"
+            print(f"Frame {frame_idx}{camera_info}: {len(points)} points")
 
         if not all_points:
             return FusedPointCloud(points=np.zeros((0, 3)))
