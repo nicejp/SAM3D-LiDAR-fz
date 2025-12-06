@@ -460,6 +460,63 @@ def clear_selection() -> Tuple[Optional[Image.Image], str]:
     return image, "選択をクリアしました"
 
 
+def run_text_segmentation(text_prompt: str, frame_idx: int) -> Tuple[Optional[Image.Image], str]:
+    """Run SAM 3 segmentation with text prompt"""
+    global state
+
+    if not text_prompt.strip():
+        image = get_video_frame(state.current_frame)
+        return image, "テキストプロンプトを入力してください"
+
+    if not state.video_path:
+        image = get_video_frame(state.current_frame)
+        return image, "先にセッションを読み込んでください"
+
+    state.current_frame = int(frame_idx)
+    state.current_mask = None
+    info_parts = [f"テキスト: \"{text_prompt}\" @ フレーム {state.current_frame}"]
+
+    if HAS_SAM3:
+        try:
+            tracker = get_sam3_tracker()
+            if tracker is not None:
+                info_parts.append("SAM 3 セグメンテーション実行中...")
+
+                # Start session
+                tracker.start_session(state.video_path)
+
+                # Add text prompt and get mask
+                result = tracker.add_text_prompt(
+                    frame_index=state.current_frame,
+                    text=text_prompt.strip(),
+                    object_id=0
+                )
+
+                state.current_mask = result.get("mask")
+                if state.current_mask is not None:
+                    mask_pixels = int(np.sum(state.current_mask))
+                    info_parts[-1] = f"✓ SAM 3 セグメンテーション完了 (マスク: {mask_pixels:,} pixels)"
+                else:
+                    info_parts[-1] = "SAM 3: マスクが生成されませんでした"
+        except Exception as e:
+            info_parts.append(f"SAM 3 エラー: {str(e)}")
+            print(f"SAM 3 text segmentation error: {e}")
+            import traceback
+            traceback.print_exc()
+    else:
+        info_parts.append("(SAM 3 未インストール - Dockerコンテナで実行してください)")
+
+    # Get frame with mask overlay
+    image = get_video_frame(state.current_frame)
+
+    # Apply mask overlay if available
+    if image is not None and state.current_mask is not None:
+        image = apply_mask_overlay(image, state.current_mask, color=(255, 50, 50), alpha=0.5)
+
+    info = "\n".join(info_parts)
+    return image, info
+
+
 def run_fusion(
     text_prompt: str,
     frame_step: int,
@@ -668,12 +725,14 @@ def create_ui():
                         gr.Markdown("#### プロンプト設定")
 
                         text_prompt = gr.Textbox(
-                            label="テキストプロンプト（オプション）",
-                            placeholder="例: chair, 椅子",
+                            label="テキストプロンプト",
+                            placeholder="例: chair, person, 椅子",
                             lines=1
                         )
 
-                        gr.Markdown("*クリックまたはテキストのどちらかを使用*")
+                        segment_btn = gr.Button("テキストでセグメント", variant="primary")
+
+                        gr.Markdown("*テキストを入力して「テキストでセグメント」をクリック*")
 
                         clear_btn = gr.Button("選択をクリア")
 
@@ -761,6 +820,12 @@ def create_ui():
 
         clear_btn.click(
             fn=clear_selection,
+            outputs=[frame_image, selection_info]
+        )
+
+        segment_btn.click(
+            fn=run_text_segmentation,
+            inputs=[text_prompt, frame_slider],
             outputs=[frame_image, selection_info]
         )
 

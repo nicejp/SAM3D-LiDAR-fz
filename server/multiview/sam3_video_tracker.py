@@ -225,27 +225,35 @@ class SAM3VideoTracker:
         if self._session_id is None:
             raise RuntimeError("Session not started. Call start_session() first.")
 
-        # テキストプロンプトを追加 (新API)
-        result = self.predictor.add_prompt(
-            session_id=self._session_id,
-            frame_idx=frame_index,
-            text=text,
-            obj_id=object_id
+        # テキストプロンプトを追加 (handle_request形式)
+        response = self.predictor.handle_request(
+            request=dict(
+                type="add_prompt",
+                session_id=self._session_id,
+                frame_index=frame_index,
+                text=text,
+            )
         )
 
         # 結果からマスクを取得
         mask = None
-        if result and "mask" in result:
-            mask = result["mask"]
-        elif result and "masks" in result:
-            mask = result["masks"][0] if len(result["masks"]) > 0 else None
+        if response and "outputs" in response:
+            outputs = response["outputs"]
+            if isinstance(outputs, dict):
+                # 最初のオブジェクトのマスクを取得
+                for obj_id, obj_data in outputs.items():
+                    if "mask" in obj_data:
+                        mask = obj_data["mask"]
+                        if hasattr(mask, 'cpu'):
+                            mask = mask.cpu().numpy()
+                        break
 
         return {
             "frame_index": frame_index,
             "object_id": object_id,
             "text": text,
             "mask": mask,
-            "raw_result": result
+            "raw_result": response
         }
 
     def propagate(
