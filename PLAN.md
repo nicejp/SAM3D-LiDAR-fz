@@ -949,6 +949,7 @@ python scripts/evaluate.py \
 | **SAM 3トラッカー** | `server/multiview/sam3_video_tracker.py` | ビデオトラッキング | ✅ 完了 |
 | **点群統合** | `server/multiview/pointcloud_fusion.py` | 多視点点群統合 | ✅ 完了 |
 | **多視点パイプライン** | `server/multiview/run.py` | 統合パイプライン | ✅ 完了 |
+| **多視点Web UI** | `server/multiview/web_ui.py` | Gradio Web UI | ✅ 完了 |
 | LLMオーケストレーター | `server/orchestrator/agent.py` | エージェント | 未実装 |
 
 ---

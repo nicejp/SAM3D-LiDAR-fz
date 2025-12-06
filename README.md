@@ -342,7 +342,21 @@ python3 -m server.fusion.auto_fuse \
 - 動画 + LiDAR深度 + カメラポーズを同期取得
 - エクスポート設定: Camera=`.abc` (Alembic), Third Party=`Blender`
 
-**使い方:**
+**方法1: Web UI（推奨）**
+
+```bash
+# Web UIを起動
+python -m server.multiview.web_ui --port 7861
+# → ブラウザで http://localhost:7861 にアクセス
+```
+
+Web UIでできること:
+1. **データソース選択**: URLからダウンロード or ローカルフォルダから選択
+2. **オブジェクト選択**: ビデオフレームをクリック or テキストプロンプト入力
+3. **パラメータ設定**: フレーム間隔、ボクセルサイズ、深度範囲
+4. **実行**: 点群統合を実行し、結果をダウンロード
+
+**方法2: CLI**
 
 ```bash
 # 1. セッション情報を確認
@@ -427,7 +441,8 @@ SAM3D-LiDAR-fz/
 │   │   ├── alembic_loader.py    # Alembicカメラポーズ抽出
 │   │   ├── sam3_video_tracker.py # SAM 3ビデオトラッキング
 │   │   ├── pointcloud_fusion.py # 多視点点群統合
-│   │   └── run.py               # 統合パイプライン
+│   │   ├── run.py               # 統合パイプライン
+│   │   └── web_ui.py            # Gradio Web UI
 │   └── orchestrator/            # LLMオーケストレーター（未実装）
 ├── ipad_app/                    # iPadアプリ (Swift)
 ├── blender_addon/               # Blenderアドオン
