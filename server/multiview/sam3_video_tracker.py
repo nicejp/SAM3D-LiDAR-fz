@@ -421,6 +421,7 @@ class SAM3VideoTracker:
         )
 
         # 結果を処理（新APIの戻り値形式に対応）
+        first_item_logged = False
         if propagation_result:
             if isinstance(propagation_result, dict):
                 # 辞書形式の場合
@@ -434,9 +435,62 @@ class SAM3VideoTracker:
                                 object_id=obj_id
                             ))
             elif hasattr(propagation_result, '__iter__'):
-                # イテレータ形式の場合（旧API互換）
+                # イテレータ形式の場合
                 for item in propagation_result:
-                    if isinstance(item, tuple) and len(item) >= 3:
+                    # デバッグ: 最初のアイテムの形式を出力
+                    if not first_item_logged:
+                        print(f"Propagation item type: {type(item)}")
+                        if isinstance(item, dict):
+                            print(f"  Keys: {item.keys()}")
+                            for k, v in item.items():
+                                if hasattr(v, 'shape'):
+                                    print(f"    {k}: shape={v.shape}")
+                                elif isinstance(v, (list, tuple)):
+                                    print(f"    {k}: len={len(v)}")
+                                else:
+                                    print(f"    {k}: {type(v)}")
+                        elif isinstance(item, tuple):
+                            print(f"  Tuple len: {len(item)}")
+                            for i, elem in enumerate(item):
+                                if hasattr(elem, 'shape'):
+                                    print(f"    [{i}]: shape={elem.shape}")
+                                else:
+                                    print(f"    [{i}]: {type(elem)}")
+                        first_item_logged = True
+
+                    # 辞書形式（SAM 3の新API）
+                    if isinstance(item, dict):
+                        frame_idx = item.get('frame_index', item.get('frame_idx', 0))
+
+                        # out_binary_masks形式
+                        if 'out_binary_masks' in item:
+                            masks = item['out_binary_masks']
+                            obj_ids = item.get('out_obj_ids', [0])
+                            if masks is not None and len(masks) > 0:
+                                for obj_id, mask in zip(obj_ids, masks):
+                                    results.append(TrackingResult(
+                                        frame_index=int(frame_idx),
+                                        mask=mask,
+                                        score=1.0,
+                                        object_id=int(obj_id)
+                                    ))
+                        # outputs形式
+                        elif 'outputs' in item:
+                            outputs = item['outputs']
+                            if isinstance(outputs, dict) and 'out_binary_masks' in outputs:
+                                masks = outputs['out_binary_masks']
+                                obj_ids = outputs.get('out_obj_ids', [0])
+                                if masks is not None and len(masks) > 0:
+                                    for obj_id, mask in zip(obj_ids, masks):
+                                        results.append(TrackingResult(
+                                            frame_index=int(frame_idx),
+                                            mask=mask,
+                                            score=1.0,
+                                            object_id=int(obj_id)
+                                        ))
+
+                    # タプル形式（旧API互換）
+                    elif isinstance(item, tuple) and len(item) >= 3:
                         frame_idx, out_obj_ids, out_mask_logits = item[:3]
                         for obj_id, mask_logits in zip(out_obj_ids, out_mask_logits):
                             mask = (mask_logits > 0).cpu().numpy().squeeze()
@@ -447,11 +501,8 @@ class SAM3VideoTracker:
                                 score=score,
                                 object_id=obj_id
                             ))
-                    if isinstance(item, tuple) and len(item) >= 1:
-                        frame_idx = item[0] if isinstance(item[0], int) else 0
-                        if frame_idx % 50 == 0:
-                            print(f"  Propagated to frame {frame_idx}")
 
+        print(f"Propagation complete: {len(results)} masks generated")
         return results
 
     def track_object(
