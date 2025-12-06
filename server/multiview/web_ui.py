@@ -443,7 +443,7 @@ def run_fusion(
 def create_ui():
     """Create Gradio UI"""
 
-    with gr.Blocks(title="Multi-view LiDAR Fusion", theme=gr.themes.Soft()) as demo:
+    with gr.Blocks(title="Multi-view LiDAR Fusion") as demo:
         gr.Markdown("# 多視点LiDAR融合 Web UI")
         gr.Markdown("Omniscientデータから多視点点群を統合します")
 
