@@ -445,6 +445,7 @@ class AlembicCameraLoader:
         self.abc_path = Path(abc_path)
         self._poses: Optional[List[Dict]] = None
         self._transforms: Optional[np.ndarray] = None
+        self._frame_to_index: Optional[Dict[int, int]] = None
 
     @property
     def poses(self) -> List[Dict]:
@@ -461,27 +462,64 @@ class AlembicCameraLoader:
         return self._transforms
 
     @property
+    def frame_to_index(self) -> Dict[int, int]:
+        """フレーム番号→配列インデックスのマッピング"""
+        if self._frame_to_index is None:
+            self._frame_to_index = {
+                pose["frame"]: idx for idx, pose in enumerate(self.poses)
+            }
+        return self._frame_to_index
+
+    @property
     def num_frames(self) -> int:
         """フレーム数"""
         return len(self.poses)
 
-    def get_transform(self, frame_index: int) -> np.ndarray:
+    @property
+    def max_frame(self) -> int:
+        """最大フレーム番号"""
+        if not self.poses:
+            return 0
+        return max(pose["frame"] for pose in self.poses)
+
+    def get_transform(self, frame_number: int) -> np.ndarray:
         """
         特定フレームの変換行列を取得
 
         Args:
-            frame_index: フレームインデックス
+            frame_number: 元のフレーム番号（配列インデックスではない）
 
         Returns:
             4x4 変換行列
         """
-        if frame_index >= self.num_frames:
-            raise IndexError(f"Frame index {frame_index} out of range (max: {self.num_frames-1})")
-        return self.transforms[frame_index]
+        if frame_number in self.frame_to_index:
+            idx = self.frame_to_index[frame_number]
+            return self.transforms[idx]
 
-    def get_position(self, frame_index: int) -> np.ndarray:
+        # フレーム番号が存在しない場合、最も近いフレームを使用
+        available_frames = sorted(self.frame_to_index.keys())
+        if not available_frames:
+            raise IndexError("No camera poses available")
+
+        # 最も近いフレームを探す
+        closest_frame = min(available_frames, key=lambda f: abs(f - frame_number))
+        idx = self.frame_to_index[closest_frame]
+        return self.transforms[idx]
+
+    def has_frame(self, frame_number: int) -> bool:
+        """指定フレーム番号のポーズが存在するか"""
+        return frame_number in self.frame_to_index
+
+    def get_position(self, frame_number: int) -> np.ndarray:
         """特定フレームのカメラ位置を取得"""
-        return get_camera_position(self.poses[frame_index])
+        if frame_number in self.frame_to_index:
+            idx = self.frame_to_index[frame_number]
+            return get_camera_position(self.poses[idx])
+        # 最も近いフレームを使用
+        available_frames = sorted(self.frame_to_index.keys())
+        closest_frame = min(available_frames, key=lambda f: abs(f - frame_number))
+        idx = self.frame_to_index[closest_frame]
+        return get_camera_position(self.poses[idx])
 
     def transform_points(
         self,

@@ -230,6 +230,13 @@ class OmniscientLoader:
             return self.camera_loader.num_frames
         return 0
 
+    @property
+    def max_camera_frame(self) -> int:
+        """カメラポーズの最大フレーム番号"""
+        if self.camera_loader and hasattr(self.camera_loader, 'max_frame'):
+            return self.camera_loader.max_frame
+        return self.num_camera_poses
+
     def get_intrinsics(self, frame_index: int = 0) -> CameraIntrinsics:
         """カメラ内部パラメータを取得"""
         # 深度画像のサイズを取得
@@ -444,7 +451,8 @@ class OmniscientLoader:
             return points_camera
 
         # カメラポーズが利用可能な場合、ワールド座標に変換
-        if self.has_camera_poses and frame_index < self.num_camera_poses:
+        # get_transformは最も近いフレームを使用するので、範囲チェックは不要
+        if self.has_camera_poses:
             camera_matrix = self.camera_loader.get_transform(frame_index)
             points_world = transform_points_to_world(points_camera, camera_matrix, flip_yz=True)
             return points_world
@@ -461,7 +469,7 @@ class OmniscientLoader:
         Returns:
             4x4 変換行列、または None
         """
-        if self.has_camera_poses and frame_index < self.num_camera_poses:
+        if self.has_camera_poses:
             return self.camera_loader.get_transform(frame_index)
         return None
 
@@ -475,7 +483,7 @@ class OmniscientLoader:
         Returns:
             (3,) 位置ベクトル、または None
         """
-        if self.has_camera_poses and frame_index < self.num_camera_poses:
+        if self.has_camera_poses:
             return self.camera_loader.get_position(frame_index)
         return None
 
