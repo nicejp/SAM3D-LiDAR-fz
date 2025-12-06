@@ -265,7 +265,8 @@ class MultiViewPointCloudFusion:
         use_world_coords: bool = True,
         max_depth: float = 10.0,
         min_depth: float = 0.1,
-        voxel_downsample: Optional[float] = None
+        voxel_downsample: Optional[float] = None,
+        object_id: Optional[int] = None
     ) -> FusedPointCloud:
         """
         マスクディレクトリから点群を統合
@@ -277,6 +278,7 @@ class MultiViewPointCloudFusion:
             max_depth: 最大深度
             min_depth: 最小深度
             voxel_downsample: ボクセルダウンサンプリングのサイズ
+            object_id: 特定のオブジェクトIDのみを使用（None=全オブジェクト）
 
         Returns:
             FusedPointCloud: 統合された点群
@@ -288,6 +290,15 @@ class MultiViewPointCloudFusion:
 
         if not mask_files:
             raise FileNotFoundError(f"No mask files found in {mask_dir}")
+
+        # オブジェクトIDでフィルタリング
+        if object_id is not None:
+            filtered_files = []
+            for mf in mask_files:
+                if f"_obj{object_id}." in mf.name or f"_obj{object_id}_" in mf.name:
+                    filtered_files.append(mf)
+            mask_files = filtered_files
+            print(f"Filtered to object_id={object_id}: {len(mask_files)} masks")
 
         # フレームインデックスとマスクを取得
         masks = {}
@@ -374,6 +385,7 @@ def main():
     parser.add_argument("--voxel", type=float, help="ボクセルダウンサンプリングサイズ")
     parser.add_argument("--max-depth", type=float, default=10.0, help="最大深度")
     parser.add_argument("--min-depth", type=float, default=0.1, help="最小深度")
+    parser.add_argument("--object-id", type=int, help="特定のオブジェクトIDのみを使用（例: 0, 3）")
 
     args = parser.parse_args()
 
@@ -385,6 +397,8 @@ def main():
     print(f"Session: {args.session_dir}")
     print(f"Masks: {args.masks}")
     print(f"Camera poses available: {loader.has_camera_poses}")
+    if args.object_id is not None:
+        print(f"Object ID filter: {args.object_id}")
 
     # 点群統合
     fusion = MultiViewPointCloudFusion(loader)
@@ -394,7 +408,8 @@ def main():
         use_world_coords=loader.has_camera_poses,
         max_depth=args.max_depth,
         min_depth=args.min_depth,
-        voxel_downsample=args.voxel
+        voxel_downsample=args.voxel,
+        object_id=args.object_id
     )
 
     print(f"\nFused point cloud: {len(result.points)} points")
