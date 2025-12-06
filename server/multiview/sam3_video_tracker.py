@@ -202,20 +202,20 @@ class SAM3VideoTracker:
         if point_labels is None:
             point_labels = [1] * len(point_coords)
 
-        # 注: propagationはプロンプト追加後に実行すべきかもしれない
-        # 一旦スキップして試す
-        # self._build_cache_for_frame(frame_index)
-        print(f"Skipping cache build (testing direct prompt)")
+        # 特徴キャッシュを構築（必須）
+        self._build_cache_for_frame(frame_index)
 
-        # 座標形式: SAM 3は (x, y) 形式を使用（試行）
-        points_xy = [[float(x), float(y)] for x, y in point_coords]
+        # 座標形式: 正規化座標 (0-1の範囲) を試す
+        # (x, y) -> (x/width, y/height)
+        points_normalized = [[float(x) / img_width, float(y) / img_height] for x, y in point_coords]
 
         print(f"Adding click prompt: frame={frame_index}")
-        print(f"  Coords (x, y): {points_xy}")
+        print(f"  Original coords (x, y): {point_coords}")
+        print(f"  Normalized coords: {points_normalized}")
         print(f"  Image size: {img_width}x{img_height}")
 
         # テンソルに変換
-        points_tensor = torch.tensor(points_xy, dtype=torch.float32)
+        points_tensor = torch.tensor(points_normalized, dtype=torch.float32)
         labels_tensor = torch.tensor(point_labels, dtype=torch.int32)
 
         # handle_requestを使用（新API）
