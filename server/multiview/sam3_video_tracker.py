@@ -68,7 +68,7 @@ class SAM3VideoTracker:
         self.device = device
         self.predictor = None
         self._is_loaded = False
-        self._inference_state = None
+        self._session_id = None
         self._video_path = None
 
     def load_model(self):
@@ -114,12 +114,10 @@ class SAM3VideoTracker:
         self._video_path = str(video_path)
         print(f"Starting session with: {self._video_path}")
 
-        # セッションを開始
-        self._inference_state = self.predictor.init_state(
-            video_path=self._video_path
-        )
+        # セッションを開始 (新API)
+        self._session_id = self.predictor.start_session(self._video_path)
 
-        return id(self._inference_state)
+        return self._session_id
 
     def add_click_prompt(
         self,
@@ -140,32 +138,36 @@ class SAM3VideoTracker:
         Returns:
             初期フレームのセグメント結果
         """
-        if self._inference_state is None:
+        if self._session_id is None:
             raise RuntimeError("Session not started. Call start_session() first.")
 
         if point_labels is None:
             point_labels = [1] * len(point_coords)
 
-        points = np.array(point_coords)
-        labels = np.array(point_labels)
+        # ポイント座標を[[x, y], ...]形式に変換
+        points = [[float(x), float(y)] for x, y in point_coords]
 
-        # プロンプトを追加
-        _, out_obj_ids, out_mask_logits = self.predictor.add_new_points_or_box(
-            inference_state=self._inference_state,
+        # プロンプトを追加 (新API)
+        result = self.predictor.add_prompt(
+            session_id=self._session_id,
             frame_idx=frame_index,
-            obj_id=object_id,
             points=points,
-            labels=labels
+            point_labels=point_labels,
+            obj_id=object_id
         )
 
-        # マスクを生成
-        mask = (out_mask_logits[0] > 0).cpu().numpy().squeeze()
+        # 結果からマスクを取得
+        mask = None
+        if result and "mask" in result:
+            mask = result["mask"]
+        elif result and "masks" in result:
+            mask = result["masks"][0] if len(result["masks"]) > 0 else None
 
         return {
             "frame_index": frame_index,
             "object_id": object_id,
             "mask": mask,
-            "mask_logits": out_mask_logits[0].cpu().numpy()
+            "raw_result": result
         }
 
     def add_text_prompt(
@@ -185,26 +187,30 @@ class SAM3VideoTracker:
         Returns:
             初期フレームのセグメント結果
         """
-        if self._inference_state is None:
+        if self._session_id is None:
             raise RuntimeError("Session not started. Call start_session() first.")
 
-        # テキストプロンプトを追加
-        _, out_obj_ids, out_mask_logits = self.predictor.add_new_text(
-            inference_state=self._inference_state,
+        # テキストプロンプトを追加 (新API)
+        result = self.predictor.add_prompt(
+            session_id=self._session_id,
             frame_idx=frame_index,
-            obj_id=object_id,
-            text=text
+            text=text,
+            obj_id=object_id
         )
 
-        # マスクを生成
-        mask = (out_mask_logits[0] > 0).cpu().numpy().squeeze()
+        # 結果からマスクを取得
+        mask = None
+        if result and "mask" in result:
+            mask = result["mask"]
+        elif result and "masks" in result:
+            mask = result["masks"][0] if len(result["masks"]) > 0 else None
 
         return {
             "frame_index": frame_index,
             "object_id": object_id,
             "text": text,
             "mask": mask,
-            "mask_logits": out_mask_logits[0].cpu().numpy()
+            "raw_result": result
         }
 
     def propagate(
@@ -224,31 +230,53 @@ class SAM3VideoTracker:
         Returns:
             各フレームのトラッキング結果
         """
-        if self._inference_state is None:
+        if self._session_id is None:
             raise RuntimeError("Session not started. Call start_session() first.")
 
         results = []
 
-        # ビデオを伝播
-        for frame_idx, out_obj_ids, out_mask_logits in self.predictor.propagate_in_video(
-            inference_state=self._inference_state,
+        # 新API: propagation_direction = "backward" or "forward"
+        propagation_direction = "backward" if reverse else "forward"
+
+        # ビデオを伝播 (新API)
+        propagation_result = self.predictor.propagate_in_video(
+            session_id=self._session_id,
+            propagation_direction=propagation_direction,
             start_frame_idx=start_frame,
-            max_frame_num_to_track=end_frame,
-            reverse=reverse
-        ):
-            for obj_id, mask_logits in zip(out_obj_ids, out_mask_logits):
-                mask = (mask_logits > 0).cpu().numpy().squeeze()
-                score = float(torch.sigmoid(mask_logits).max().cpu().numpy())
+            max_frame_num_to_track=end_frame
+        )
 
-                results.append(TrackingResult(
-                    frame_index=frame_idx,
-                    mask=mask,
-                    score=score,
-                    object_id=obj_id
-                ))
-
-            if frame_idx % 50 == 0:
-                print(f"  Propagated to frame {frame_idx}")
+        # 結果を処理（新APIの戻り値形式に対応）
+        if propagation_result:
+            if isinstance(propagation_result, dict):
+                # 辞書形式の場合
+                for frame_idx, frame_data in propagation_result.items():
+                    if isinstance(frame_data, dict) and "masks" in frame_data:
+                        for obj_id, mask in enumerate(frame_data["masks"]):
+                            results.append(TrackingResult(
+                                frame_index=int(frame_idx),
+                                mask=mask,
+                                score=1.0,
+                                object_id=obj_id
+                            ))
+            elif hasattr(propagation_result, '__iter__'):
+                # イテレータ形式の場合（旧API互換）
+                for item in propagation_result:
+                    if isinstance(item, tuple) and len(item) >= 3:
+                        frame_idx, out_obj_ids, out_mask_logits = item[:3]
+                        for obj_id, mask_logits in zip(out_obj_ids, out_mask_logits):
+                            mask = (mask_logits > 0).cpu().numpy().squeeze()
+                            score = float(torch.sigmoid(mask_logits).max().cpu().numpy())
+                            results.append(TrackingResult(
+                                frame_index=frame_idx,
+                                mask=mask,
+                                score=score,
+                                object_id=obj_id
+                            ))
+                    if isinstance(item, tuple) and len(item) >= 1:
+                        frame_idx = item[0] if isinstance(item[0], int) else 0
+                        if frame_idx % 50 == 0:
+                            print(f"  Propagated to frame {frame_idx}")
 
         return results
 
