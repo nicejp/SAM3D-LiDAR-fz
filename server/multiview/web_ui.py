@@ -46,6 +46,17 @@ except ImportError:
     CV2_AVAILABLE = False
     print("Warning: OpenCV not available. Video frame extraction will be limited.")
 
+# Try to import SAM 3 video tracker
+HAS_SAM3 = False
+SAM3VideoTracker = None
+try:
+    from server.multiview.sam3_video_tracker import SAM3VideoTracker, HAS_SAM3 as _HAS_SAM3
+    HAS_SAM3 = _HAS_SAM3
+    if HAS_SAM3:
+        print("SAM 3 available for real-time segmentation")
+except ImportError:
+    print("Warning: SAM 3 not available. Segmentation will be disabled.")
+
 
 # Constants
 DEFAULT_EXPERIMENTS_DIR = "experiments"
@@ -62,10 +73,30 @@ class SessionState:
     click_point: Optional[Tuple[int, int]] = None
     text_prompt: Optional[str] = None
     loader: Any = None
+    # SAM 3 state
+    sam3_tracker: Any = None
+    current_mask: Any = None  # numpy array of current segmentation mask
 
 
 # Global state
 state = SessionState()
+
+# Global SAM 3 tracker (initialized once, reused)
+_sam3_tracker_instance = None
+
+
+def get_sam3_tracker():
+    """Get or create SAM 3 tracker instance"""
+    global _sam3_tracker_instance
+    if not HAS_SAM3:
+        return None
+    if _sam3_tracker_instance is None:
+        try:
+            _sam3_tracker_instance = SAM3VideoTracker()
+        except Exception as e:
+            print(f"Failed to create SAM 3 tracker: {e}")
+            return None
+    return _sam3_tracker_instance
 
 
 def get_available_sessions(experiments_dir: str = DEFAULT_EXPERIMENTS_DIR) -> List[str]:
@@ -323,26 +354,100 @@ def update_frame(frame_idx: int) -> Optional[Image.Image]:
     return get_video_frame(state.current_frame)
 
 
+def apply_mask_overlay(image: Image.Image, mask: np.ndarray, color: Tuple[int, int, int] = (255, 0, 0), alpha: float = 0.4) -> Image.Image:
+    """Apply segmentation mask overlay to image"""
+    if mask is None:
+        return image
+
+    # Convert image to RGBA
+    img_rgba = image.convert("RGBA")
+
+    # Create mask overlay
+    overlay = Image.new("RGBA", image.size, (0, 0, 0, 0))
+    overlay_data = np.array(overlay)
+
+    # Resize mask if needed
+    if mask.shape[:2] != (image.height, image.width):
+        mask_resized = cv2.resize(mask.astype(np.uint8), (image.width, image.height), interpolation=cv2.INTER_NEAREST)
+    else:
+        mask_resized = mask
+
+    # Apply color where mask is True
+    overlay_data[mask_resized > 0] = [color[0], color[1], color[2], int(255 * alpha)]
+
+    overlay = Image.fromarray(overlay_data, "RGBA")
+
+    # Composite
+    result = Image.alpha_composite(img_rgba, overlay)
+    return result.convert("RGB")
+
+
 def on_image_click(evt: gr.SelectData, frame_idx: int) -> Tuple[Optional[Image.Image], str]:
-    """Handle click on image to select object"""
+    """Handle click on image to select object and run SAM 3 segmentation"""
     global state
 
     x, y = evt.index
     state.click_point = (x, y)
     state.current_frame = int(frame_idx)
+    state.current_mask = None  # Reset mask
 
-    # Redraw frame with click marker
+    info_parts = [f"選択位置: ({x}, {y}) @ フレーム {state.current_frame}"]
+
+    # Try to run SAM 3 segmentation
+    if HAS_SAM3 and state.video_path:
+        try:
+            tracker = get_sam3_tracker()
+            if tracker is not None:
+                info_parts.append("SAM 3 セグメンテーション実行中...")
+
+                # Start session if needed
+                tracker.start_session(state.video_path)
+
+                # Add click prompt and get mask
+                result = tracker.add_click_prompt(
+                    frame_index=state.current_frame,
+                    point_coords=[(x, y)],
+                    point_labels=[1],  # 1 = foreground
+                    object_id=0
+                )
+
+                state.current_mask = result.get("mask")
+                if state.current_mask is not None:
+                    mask_pixels = np.sum(state.current_mask)
+                    info_parts[-1] = f"✓ SAM 3 セグメンテーション完了 (マスク: {mask_pixels:,} pixels)"
+                else:
+                    info_parts[-1] = "SAM 3: マスクが生成されませんでした"
+        except Exception as e:
+            info_parts.append(f"SAM 3 エラー: {str(e)}")
+            print(f"SAM 3 segmentation error: {e}")
+            import traceback
+            traceback.print_exc()
+    else:
+        if not HAS_SAM3:
+            info_parts.append("(SAM 3 未インストール - Dockerコンテナで実行してください)")
+
+    # Get frame with mask overlay
     image = get_video_frame(state.current_frame)
 
-    info = f"選択位置: ({x}, {y}) @ フレーム {state.current_frame}"
+    # Apply mask overlay if available
+    if image is not None and state.current_mask is not None:
+        image = apply_mask_overlay(image, state.current_mask, color=(255, 50, 50), alpha=0.5)
 
+        # Draw click point on top
+        draw = ImageDraw.Draw(image)
+        radius = 15
+        draw.ellipse([x-radius, y-radius, x+radius, y+radius], outline='lime', width=3)
+        draw.ellipse([x-3, y-3, x+3, y+3], fill='lime')
+
+    info = "\n".join(info_parts)
     return image, info
 
 
 def clear_selection() -> Tuple[Optional[Image.Image], str]:
-    """Clear click selection"""
+    """Clear click selection and mask"""
     global state
     state.click_point = None
+    state.current_mask = None
     image = get_video_frame(state.current_frame)
     return image, "選択をクリアしました"
 
@@ -524,7 +629,8 @@ def create_ui():
 
             # Tab 2: Object Selection
             with gr.TabItem("2. オブジェクト選択", id="tab_select"):
-                gr.Markdown("### ビデオフレームをクリックしてオブジェクトを選択")
+                sam3_status = "✓ SAM 3 利用可能" if HAS_SAM3 else "⚠ SAM 3 未インストール (Dockerコンテナで実行してください)"
+                gr.Markdown(f"### ビデオフレームをクリックしてオブジェクトを選択\n**{sam3_status}**")
 
                 with gr.Row():
                     with gr.Column(scale=2):
