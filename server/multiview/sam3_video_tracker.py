@@ -213,6 +213,7 @@ class SAM3VideoTracker:
         labels_tensor = torch.tensor(point_labels, dtype=torch.int32)
 
         # handle_requestを使用（新API）
+        print(f"Adding click prompt: frame={frame_index}, points_rel={points_rel}, labels={point_labels}")
         response = self.predictor.handle_request(
             request=dict(
                 type="add_prompt",
@@ -223,6 +224,18 @@ class SAM3VideoTracker:
                 obj_id=object_id,
             )
         )
+
+        # デバッグ: レスポンスの内容を確認
+        print(f"add_prompt response keys: {response.keys() if response else 'None'}")
+        if response:
+            for key, value in response.items():
+                if key == "outputs":
+                    print(f"  outputs type: {type(value)}")
+                    if isinstance(value, dict):
+                        for k, v in value.items():
+                            print(f"    outputs[{k}] type: {type(v)}, shape: {v.shape if hasattr(v, 'shape') else 'N/A'}")
+                else:
+                    print(f"  {key}: {type(value)}")
 
         # 結果からマスクを取得
         mask = None
