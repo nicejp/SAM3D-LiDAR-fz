@@ -322,6 +322,10 @@ class SAM3VideoTracker:
         if self._session_id is None:
             raise RuntimeError("Session not started. Call start_session() first.")
 
+        # 特定フレームが指定された場合、特徴キャッシュを構築（クリックプロンプトと同様）
+        if frame_index >= 0:
+            self._build_cache_for_frame(frame_index)
+
         print(f"Adding text prompt: frame={frame_index}, text=\"{text}\"")
 
         # テキストプロンプトを追加 (handle_request形式)
@@ -406,6 +410,11 @@ class SAM3VideoTracker:
         """
         if self._session_id is None:
             raise RuntimeError("Session not started. Call start_session() first.")
+
+        # キャッシュが構築されていない場合、開始フレームまでキャッシュを構築
+        if self._cache_built_frame < start_frame:
+            print(f"Building cache to start_frame {start_frame} before propagation...")
+            self._build_cache_for_frame(start_frame)
 
         results = []
 
