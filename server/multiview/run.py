@@ -107,7 +107,10 @@ class MultiViewPipeline:
         sor_std_ratio: float = 2.0,
         radius_outlier_removal: bool = False,
         ror_radius: float = 0.05,
-        ror_min_neighbors: int = 5
+        ror_min_neighbors: int = 5,
+        use_icp: bool = False,
+        icp_threshold: float = 0.02,
+        icp_max_iteration: int = 50
     ) -> List[Path]:
         """
         マスクから点群を統合（複数オブジェクト対応）
@@ -125,6 +128,9 @@ class MultiViewPipeline:
             radius_outlier_removal: 半径フィルタリング
             ror_radius: 検索半径
             ror_min_neighbors: 最小近傍点数
+            use_icp: ICP精密位置合わせ
+            icp_threshold: ICP収束閾値
+            icp_max_iteration: ICP最大反復回数
 
         Returns:
             出力PLYファイルパスのリスト
@@ -145,7 +151,10 @@ class MultiViewPipeline:
             sor_std_ratio=sor_std_ratio,
             radius_outlier_removal=radius_outlier_removal,
             ror_radius=ror_radius,
-            ror_min_neighbors=ror_min_neighbors
+            ror_min_neighbors=ror_min_neighbors,
+            use_icp=use_icp,
+            icp_threshold=icp_threshold,
+            icp_max_iteration=icp_max_iteration
         )
 
         # 各オブジェクトを個別のファイルに保存
@@ -175,7 +184,10 @@ class MultiViewPipeline:
         sor_std_ratio: float = 2.0,
         radius_outlier_removal: bool = False,
         ror_radius: float = 0.05,
-        ror_min_neighbors: int = 5
+        ror_min_neighbors: int = 5,
+        use_icp: bool = False,
+        icp_threshold: float = 0.02,
+        icp_max_iteration: int = 50
     ) -> Dict:
         """
         フルパイプラインを実行
@@ -196,6 +208,9 @@ class MultiViewPipeline:
             radius_outlier_removal: 半径フィルタリング
             ror_radius: 検索半径
             ror_min_neighbors: 最小近傍点数
+            use_icp: ICP精密位置合わせ
+            icp_threshold: ICP収束閾値
+            icp_max_iteration: ICP最大反復回数
 
         Returns:
             結果の辞書
@@ -229,7 +244,10 @@ class MultiViewPipeline:
             sor_std_ratio=sor_std_ratio,
             radius_outlier_removal=radius_outlier_removal,
             ror_radius=ror_radius,
-            ror_min_neighbors=ror_min_neighbors
+            ror_min_neighbors=ror_min_neighbors,
+            use_icp=use_icp,
+            icp_threshold=icp_threshold,
+            icp_max_iteration=icp_max_iteration
         )
         result["output_plys"] = [str(p) for p in output_plys]
         # 後方互換性のため最初のファイルを output_ply にも設定

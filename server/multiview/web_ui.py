@@ -577,6 +577,9 @@ def run_fusion(
     radius_outlier_removal: bool,
     ror_radius: float,
     ror_min_neighbors: int,
+    use_icp: bool,
+    icp_threshold: float,
+    icp_max_iteration: int,
     progress=gr.Progress()
 ) -> Tuple[str, Optional[str]]:
     """Run the fusion pipeline"""
@@ -631,7 +634,10 @@ def run_fusion(
                 sor_std_ratio=sor_std_ratio,
                 radius_outlier_removal=radius_outlier_removal,
                 ror_radius=ror_radius,
-                ror_min_neighbors=ror_min_neighbors
+                ror_min_neighbors=ror_min_neighbors,
+                use_icp=use_icp,
+                icp_threshold=icp_threshold,
+                icp_max_iteration=int(icp_max_iteration)
             )
 
             # 複数オブジェクト対応
@@ -897,6 +903,30 @@ def create_ui():
                                 value=5
                             )
 
+                    gr.Markdown("### ICP精密位置合わせ")
+                    gr.Markdown("カメラポーズのズレを補正して点群を正確に位置合わせします")
+
+                    use_icp = gr.Checkbox(
+                        label="ICP精密位置合わせを使用",
+                        value=False
+                    )
+
+                    with gr.Row():
+                        icp_threshold = gr.Slider(
+                            label="ICP収束閾値（m）",
+                            minimum=0.005,
+                            maximum=0.1,
+                            step=0.005,
+                            value=0.02
+                        )
+                        icp_max_iteration = gr.Slider(
+                            label="ICP最大反復回数",
+                            minimum=10,
+                            maximum=200,
+                            step=10,
+                            value=50
+                        )
+
             # Tab 3: Run Fusion
             with gr.TabItem("3. 実行", id="tab_run"):
                 gr.Markdown("### 点群統合を実行")
@@ -960,7 +990,8 @@ def create_ui():
             inputs=[
                 text_prompt, frame_step, voxel_size, min_depth, max_depth,
                 smooth, statistical_outlier_removal, sor_neighbors, sor_std_ratio,
-                radius_outlier_removal, ror_radius, ror_min_neighbors
+                radius_outlier_removal, ror_radius, ror_min_neighbors,
+                use_icp, icp_threshold, icp_max_iteration
             ],
             outputs=[result_text, output_files]
         )

@@ -157,7 +157,10 @@ class MultiViewPointCloudFusion:
         sor_std_ratio: float = 2.0,
         radius_outlier_removal: bool = False,
         ror_radius: float = 0.05,
-        ror_min_neighbors: int = 5
+        ror_min_neighbors: int = 5,
+        use_icp: bool = False,
+        icp_threshold: float = 0.02,
+        icp_max_iteration: int = 50
     ) -> FusedPointCloud:
         """
         複数フレームの点群を統合
@@ -176,6 +179,9 @@ class MultiViewPointCloudFusion:
             radius_outlier_removal: 半径フィルタリングを有効化
             ror_radius: 半径フィルタリングの検索半径
             ror_min_neighbors: 半径フィルタリングの最小近傍点数
+            use_icp: ICPによる精密位置合わせを使用
+            icp_threshold: ICP収束閾値（メートル）
+            icp_max_iteration: ICP最大反復回数
 
         Returns:
             FusedPointCloud: 統合された点群
@@ -183,6 +189,17 @@ class MultiViewPointCloudFusion:
         all_points = []
         all_colors = []
         all_frame_indices = []
+
+        # ICPを使用する場合、Open3Dをインポート
+        if use_icp:
+            try:
+                import open3d as o3d
+                print("Using ICP for point cloud alignment")
+            except ImportError:
+                print("Warning: Open3D not available, disabling ICP")
+                use_icp = False
+
+        accumulated_pcd = None  # ICP用の累積点群
 
         for frame_idx in frame_indices:
             if frame_idx not in masks:
@@ -197,13 +214,8 @@ class MultiViewPointCloudFusion:
                 min_depth=min_depth
             )
 
-            if len(points) > 0:
-                all_points.append(points)
-                if colors is not None:
-                    all_colors.append(colors)
-                all_frame_indices.append(
-                    np.full(len(points), frame_idx, dtype=np.int32)
-                )
+            if len(points) == 0:
+                continue
 
             # カメラフレームマッピング情報を表示
             camera_info = ""
@@ -211,7 +223,53 @@ class MultiViewPointCloudFusion:
                 camera_frame = self.loader.video_frame_to_camera_frame(frame_idx)
                 if camera_frame != frame_idx:
                     camera_info = f" -> camera frame {camera_frame}"
-            print(f"Frame {frame_idx}{camera_info}: {len(points)} points")
+
+            # ICPによる位置合わせ
+            if use_icp and accumulated_pcd is not None and len(points) > 100:
+                # 現在のフレームの点群をOpen3D形式に変換
+                source_pcd = o3d.geometry.PointCloud()
+                source_pcd.points = o3d.utility.Vector3dVector(points)
+
+                # ICPで位置合わせ
+                icp_result = o3d.pipelines.registration.registration_icp(
+                    source_pcd, accumulated_pcd,
+                    icp_threshold,
+                    np.eye(4),
+                    o3d.pipelines.registration.TransformationEstimationPointToPoint(),
+                    o3d.pipelines.registration.ICPConvergenceCriteria(
+                        max_iteration=icp_max_iteration
+                    )
+                )
+
+                # 変換を適用
+                if icp_result.fitness > 0.1:  # ある程度のマッチングがある場合のみ
+                    points_homo = np.hstack([points, np.ones((len(points), 1))])
+                    points = (icp_result.transformation @ points_homo.T).T[:, :3]
+                    print(f"Frame {frame_idx}{camera_info}: {len(points)} points (ICP fitness={icp_result.fitness:.3f})")
+                else:
+                    print(f"Frame {frame_idx}{camera_info}: {len(points)} points (ICP skipped, low fitness)")
+            else:
+                print(f"Frame {frame_idx}{camera_info}: {len(points)} points")
+
+            all_points.append(points)
+            if colors is not None:
+                all_colors.append(colors)
+            all_frame_indices.append(
+                np.full(len(points), frame_idx, dtype=np.int32)
+            )
+
+            # ICP用の累積点群を更新
+            if use_icp:
+                if accumulated_pcd is None:
+                    accumulated_pcd = o3d.geometry.PointCloud()
+                    accumulated_pcd.points = o3d.utility.Vector3dVector(points)
+                else:
+                    # ダウンサンプリングして累積（メモリ効率化）
+                    new_pcd = o3d.geometry.PointCloud()
+                    new_pcd.points = o3d.utility.Vector3dVector(points)
+                    accumulated_pcd += new_pcd
+                    if len(accumulated_pcd.points) > 100000:
+                        accumulated_pcd = accumulated_pcd.voxel_down_sample(0.01)
 
         if not all_points:
             return FusedPointCloud(points=np.zeros((0, 3)))
@@ -436,7 +494,10 @@ class MultiViewPointCloudFusion:
         sor_std_ratio: float = 2.0,
         radius_outlier_removal: bool = False,
         ror_radius: float = 0.05,
-        ror_min_neighbors: int = 5
+        ror_min_neighbors: int = 5,
+        use_icp: bool = False,
+        icp_threshold: float = 0.02,
+        icp_max_iteration: int = 50
     ) -> FusedPointCloud:
         """
         マスクディレクトリから点群を統合
@@ -456,6 +517,9 @@ class MultiViewPointCloudFusion:
             radius_outlier_removal: 半径フィルタリングを有効化
             ror_radius: 半径フィルタリングの検索半径
             ror_min_neighbors: 半径フィルタリングの最小近傍点数
+            use_icp: ICP精密位置合わせを使用
+            icp_threshold: ICP収束閾値
+            icp_max_iteration: ICP最大反復回数
 
         Returns:
             FusedPointCloud: 統合された点群
@@ -510,7 +574,10 @@ class MultiViewPointCloudFusion:
             sor_std_ratio=sor_std_ratio,
             radius_outlier_removal=radius_outlier_removal,
             ror_radius=ror_radius,
-            ror_min_neighbors=ror_min_neighbors
+            ror_min_neighbors=ror_min_neighbors,
+            use_icp=use_icp,
+            icp_threshold=icp_threshold,
+            icp_max_iteration=icp_max_iteration
         )
 
     def fuse_all_objects(
@@ -527,7 +594,10 @@ class MultiViewPointCloudFusion:
         sor_std_ratio: float = 2.0,
         radius_outlier_removal: bool = False,
         ror_radius: float = 0.05,
-        ror_min_neighbors: int = 5
+        ror_min_neighbors: int = 5,
+        use_icp: bool = False,
+        icp_threshold: float = 0.02,
+        icp_max_iteration: int = 50
     ) -> Dict[int, FusedPointCloud]:
         """
         全オブジェクトの点群を個別に統合
@@ -546,6 +616,9 @@ class MultiViewPointCloudFusion:
             radius_outlier_removal: 半径フィルタリング
             ror_radius: 検索半径
             ror_min_neighbors: 最小近傍点数
+            use_icp: ICP精密位置合わせ
+            icp_threshold: ICP収束閾値
+            icp_max_iteration: ICP最大反復回数
 
         Returns:
             オブジェクトID -> FusedPointCloud の辞書
@@ -568,7 +641,10 @@ class MultiViewPointCloudFusion:
                 sor_std_ratio=sor_std_ratio,
                 radius_outlier_removal=radius_outlier_removal,
                 ror_radius=ror_radius,
-                ror_min_neighbors=ror_min_neighbors
+                ror_min_neighbors=ror_min_neighbors,
+                use_icp=use_icp,
+                icp_threshold=icp_threshold,
+                icp_max_iteration=icp_max_iteration
             )
             return {0: result}
 
@@ -591,7 +667,10 @@ class MultiViewPointCloudFusion:
                 sor_std_ratio=sor_std_ratio,
                 radius_outlier_removal=radius_outlier_removal,
                 ror_radius=ror_radius,
-                ror_min_neighbors=ror_min_neighbors
+                ror_min_neighbors=ror_min_neighbors,
+                use_icp=use_icp,
+                icp_threshold=icp_threshold,
+                icp_max_iteration=icp_max_iteration
             )
             results[obj_id] = result
             print(f"Object {obj_id}: {len(result.points)} points")
