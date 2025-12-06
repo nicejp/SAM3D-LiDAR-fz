@@ -415,8 +415,16 @@ def on_image_click(evt: gr.SelectData, frame_idx: int) -> Tuple[Optional[Image.I
 
                 # セッション開始（動画が変わった場合のみ）
                 if state.sam3_session_video != state.video_path:
+                    # 動画が変わったらトラッカーを再初期化（BFloat16エラー回避）
+                    global _sam3_tracker_instance
+                    _sam3_tracker_instance = None
+                    tracker = get_sam3_tracker()
+
                     tracker.start_session(state.video_path)
                     state.sam3_session_video = state.video_path
+                    # 動画が変わったらクリック点もリセット
+                    state.click_points = [(x, y)]
+                    state.click_labels = [1]
 
                 # Get image dimensions for coordinate conversion
                 img_width, img_height = 1920, 1080  # default
