@@ -245,13 +245,13 @@ def load_session(session_name: str) -> Tuple[Optional[Image.Image], str, dict]:
         state.loader = loader
         state.session_path = session_path
 
-        # Get video path
+        # Get video path (convert to string for cv2)
         video_path = loader.video_path
-        state.video_path = video_path
+        state.video_path = str(video_path) if video_path else None
 
         # Get frame count
-        if CV2_AVAILABLE and video_path and os.path.exists(video_path):
-            cap = cv2.VideoCapture(video_path)
+        if CV2_AVAILABLE and state.video_path and os.path.exists(state.video_path):
+            cap = cv2.VideoCapture(state.video_path)
             total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
             cap.release()
             state.total_frames = total_frames
@@ -262,12 +262,12 @@ def load_session(session_name: str) -> Tuple[Optional[Image.Image], str, dict]:
         frame_image = get_video_frame(0)
 
         summary = loader.summary()
-        info_text = f"""
-セッション: {session_name}
-動画: {os.path.basename(video_path) if video_path else 'N/A'}
+        video_exists = os.path.exists(state.video_path) if state.video_path else False
+        info_text = f"""セッション: {session_name}
+動画: {os.path.basename(str(video_path)) if video_path else 'N/A'} {'✓' if video_exists else '(ファイルなし)'}
 深度フレーム数: {loader.num_depth_frames}
 カメラポーズ数: {summary.get('camera_poses', {}).get('num_frames', 'N/A')}
-"""
+フレーム数: {state.total_frames}"""
 
         max_frame = max(1, state.total_frames - 1)
         return frame_image, info_text, gr.update(value=0, maximum=max_frame)
