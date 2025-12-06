@@ -225,17 +225,17 @@ def download_from_url(url: str, progress=gr.Progress()) -> Tuple[str, str]:
         return "", f"エラー: {str(e)}"
 
 
-def load_session(session_name: str) -> Tuple[Optional[Image.Image], str, int]:
+def load_session(session_name: str) -> Tuple[Optional[Image.Image], str, dict]:
     """Load a session and return first frame"""
     global state
 
     if not session_name:
-        return None, "セッションを選択してください", 0
+        return None, "セッションを選択してください", gr.update(value=0, maximum=100)
 
     session_path = os.path.join(DEFAULT_EXPERIMENTS_DIR, session_name)
 
     if not os.path.exists(session_path):
-        return None, f"セッションが見つかりません: {session_path}", 0
+        return None, f"セッションが見つかりません: {session_path}", gr.update(value=0, maximum=100)
 
     try:
         # Import loader
@@ -269,12 +269,13 @@ def load_session(session_name: str) -> Tuple[Optional[Image.Image], str, int]:
 カメラポーズ数: {summary.get('camera_poses', {}).get('num_frames', 'N/A')}
 """
 
-        return frame_image, info_text, state.total_frames
+        max_frame = max(1, state.total_frames - 1)
+        return frame_image, info_text, gr.update(value=0, maximum=max_frame)
 
     except Exception as e:
         import traceback
         traceback.print_exc()
-        return None, f"読み込みエラー: {str(e)}", 0
+        return None, f"読み込みエラー: {str(e)}", gr.update(value=0, maximum=100)
 
 
 def get_video_frame(frame_idx: int) -> Optional[Image.Image]:
@@ -627,10 +628,6 @@ def create_ui():
             fn=load_session,
             inputs=[session_dropdown],
             outputs=[frame_image, session_info, frame_slider]
-        ).then(
-            fn=lambda x: gr.update(maximum=x if x > 0 else 100),
-            inputs=[frame_slider],
-            outputs=[frame_slider]
         )
 
         frame_slider.change(
