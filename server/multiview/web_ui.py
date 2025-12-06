@@ -99,40 +99,56 @@ def download_from_url(url: str, progress=gr.Progress()) -> Tuple[str, str]:
         os.makedirs(download_dir, exist_ok=True)
 
         temp_path = None
+        original_filename = None
 
         # Handle Google Drive links
         if 'drive.google.com' in url:
             progress(0.1, desc="Google Driveからダウンロード中...")
 
             # Extract file ID from Google Drive URL
+            file_id = None
             if '/file/d/' in url:
-                file_id = url.split('/file/d/')[1].split('/')[0]
+                file_id = url.split('/file/d/')[1].split('/')[0].split('?')[0]
             elif 'id=' in url:
                 file_id = url.split('id=')[1].split('&')[0]
-            else:
-                return "", "Google DriveのURLが正しくありません"
 
-            # Use gdown for Google Drive (handles large files better)
+            if not file_id:
+                return "", "Google DriveのURLからファイルIDを抽出できません"
+
+            # Use gdown for Google Drive (handles large files and confirmation pages)
             try:
                 import gdown
+
+                # gdownはファイル名を自動検出するので、出力ディレクトリを指定
                 download_url = f"https://drive.google.com/uc?id={file_id}"
-                temp_path = os.path.join(download_dir, f"gdrive_{file_id}")
-                gdown.download(download_url, temp_path, quiet=False, fuzzy=True)
+
+                # gdownにディレクトリを指定して、元のファイル名を保持
+                temp_path = gdown.download(download_url, output=download_dir + "/", quiet=False, fuzzy=True)
+
+                if temp_path:
+                    original_filename = os.path.basename(temp_path)
+                    print(f"Downloaded: {temp_path} (filename: {original_filename})")
+                else:
+                    return "", "gdownでのダウンロードに失敗しました"
+
             except ImportError:
                 return "", "gdownがインストールされていません。pip install gdown を実行してください"
+            except Exception as e:
+                return "", f"Google Driveダウンロードエラー: {str(e)}"
         else:
             # Regular URL download
             parsed = urllib.parse.urlparse(url)
-            filename = os.path.basename(parsed.path) or "downloaded_data"
-            temp_path = os.path.join(download_dir, filename)
+            original_filename = os.path.basename(parsed.path) or "downloaded_data"
+            temp_path = os.path.join(download_dir, original_filename)
 
-            progress(0.1, desc=f"ダウンロード中: {filename}")
+            progress(0.1, desc=f"ダウンロード中: {original_filename}")
             urllib.request.urlretrieve(url, temp_path)
 
         if not temp_path or not os.path.exists(temp_path):
             return "", "ダウンロードに失敗しました"
 
-        progress(0.5, desc="ダウンロード完了、ファイルタイプを確認中...")
+        file_size = os.path.getsize(temp_path)
+        progress(0.5, desc=f"ダウンロード完了 ({file_size/1024/1024:.1f}MB)、展開中...")
 
         # Detect file type and extract
         extract_dir = None
@@ -140,23 +156,33 @@ def download_from_url(url: str, progress=gr.Progress()) -> Tuple[str, str]:
         # Try to open as ZIP (check magic bytes)
         try:
             with zipfile.ZipFile(temp_path, 'r') as zip_ref:
-                extract_dir = temp_path + "_extracted"
+                # Use original filename for extract directory
+                extract_name = original_filename.replace('.zip', '') if original_filename else 'extracted'
+                extract_dir = os.path.join(download_dir, extract_name)
                 os.makedirs(extract_dir, exist_ok=True)
                 progress(0.6, desc="ZIPファイルを展開中...")
                 zip_ref.extractall(extract_dir)
                 os.remove(temp_path)
+                print(f"Extracted to: {extract_dir}")
         except zipfile.BadZipFile:
             # Not a ZIP file, try tar.gz
             try:
                 with tarfile.open(temp_path, 'r:gz') as tar_ref:
-                    extract_dir = temp_path + "_extracted"
+                    extract_name = original_filename.replace('.tar.gz', '').replace('.tgz', '') if original_filename else 'extracted'
+                    extract_dir = os.path.join(download_dir, extract_name)
                     os.makedirs(extract_dir, exist_ok=True)
                     progress(0.6, desc="tar.gzファイルを展開中...")
                     tar_ref.extractall(extract_dir)
                     os.remove(temp_path)
-            except:
-                # Not an archive, use download directory
+            except Exception as tar_err:
+                print(f"Not a tar.gz file: {tar_err}")
+                # Not an archive, check if it's a valid file
                 extract_dir = download_dir
+                # Check first few bytes to see what type of file it is
+                with open(temp_path, 'rb') as f:
+                    header = f.read(100)
+                    if b'<!DOCTYPE' in header or b'<html' in header:
+                        return "", "ダウンロードしたファイルがHTMLページです。Google Driveの共有設定を確認してください（「リンクを知っている全員」に設定）"
 
         progress(0.8, desc="Omniscientセッションを検索中...")
 
@@ -165,6 +191,7 @@ def download_from_url(url: str, progress=gr.Progress()) -> Tuple[str, str]:
         for root, dirs, files in os.walk(extract_dir):
             if any(f.endswith('.omni') for f in files):
                 session_path = root
+                print(f"Found Omniscient session: {session_path}")
                 break
 
         if session_path:
@@ -175,10 +202,11 @@ def download_from_url(url: str, progress=gr.Progress()) -> Tuple[str, str]:
             # List what was extracted for debugging
             extracted_files = []
             for root, dirs, files in os.walk(extract_dir):
-                for f in files[:10]:  # Limit to 10 files
-                    extracted_files.append(os.path.join(root, f))
-            files_info = "\n".join(extracted_files[:5]) if extracted_files else "なし"
-            return "", f"Omniscientセッション(.omniファイル)が見つかりません。\n展開先: {extract_dir}\n展開されたファイル:\n{files_info}"
+                for f in files[:20]:
+                    rel_file = os.path.relpath(os.path.join(root, f), extract_dir)
+                    extracted_files.append(rel_file)
+            files_info = "\n".join(extracted_files[:10]) if extracted_files else "（ファイルなし）"
+            return "", f"Omniscientセッション(.omniファイル)が見つかりません。\n\n展開先: {extract_dir}\n\n展開されたファイル:\n{files_info}"
 
     except Exception as e:
         import traceback
