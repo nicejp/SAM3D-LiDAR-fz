@@ -81,11 +81,8 @@ class SAM3VideoTracker:
         if self.device == "cuda" and torch.cuda.is_available():
             torch.autocast("cuda", dtype=torch.bfloat16).__enter__()
 
-        # Note: device argument removed - SAM 3 auto-detects GPU
-        self.predictor = build_sam3_video_predictor(
-            eval_mode=True,
-            load_from_HF=True
-        )
+        # SAM 3 API: no arguments needed, auto-detects GPU and loads from HF
+        self.predictor = build_sam3_video_predictor()
 
         self._is_loaded = True
         print("SAM 3 video model loaded!")
