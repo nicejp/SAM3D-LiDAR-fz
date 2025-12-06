@@ -42,7 +42,9 @@ def load_alembic_camera_poses(abc_path: str, output_json: Optional[str] = None) 
         カメラポーズのリスト（各フレームの変換行列を含む）
     """
     if not HAS_BPY:
-        raise RuntimeError("bpy (Blender Python) is not installed. Run: pip install bpy")
+        print("Warning: bpy (Blender Python) is not installed. Camera poses will not be available.")
+        print("         Run: pip install bpy")
+        return []  # 空のリストを返す（エラーではなく警告）
 
     abc_path = Path(abc_path)
     if not abc_path.exists():
