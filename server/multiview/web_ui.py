@@ -156,9 +156,15 @@ def download_from_url(url: str, progress=gr.Progress()) -> Tuple[str, str]:
         # Try to open as ZIP (check magic bytes)
         try:
             with zipfile.ZipFile(temp_path, 'r') as zip_ref:
-                # Use original filename for extract directory
-                extract_name = original_filename.replace('.zip', '') if original_filename else 'extracted'
+                # Use original filename for extract directory, add _extracted suffix to avoid conflicts
+                extract_name = (original_filename.replace('.zip', '') if original_filename else 'extracted') + "_extracted"
                 extract_dir = os.path.join(download_dir, extract_name)
+
+                # Remove existing directory if exists
+                if os.path.exists(extract_dir):
+                    import shutil
+                    shutil.rmtree(extract_dir)
+
                 os.makedirs(extract_dir, exist_ok=True)
                 progress(0.6, desc="ZIPファイルを展開中...")
                 zip_ref.extractall(extract_dir)
@@ -168,8 +174,13 @@ def download_from_url(url: str, progress=gr.Progress()) -> Tuple[str, str]:
             # Not a ZIP file, try tar.gz
             try:
                 with tarfile.open(temp_path, 'r:gz') as tar_ref:
-                    extract_name = original_filename.replace('.tar.gz', '').replace('.tgz', '') if original_filename else 'extracted'
+                    extract_name = (original_filename.replace('.tar.gz', '').replace('.tgz', '') if original_filename else 'extracted') + "_extracted"
                     extract_dir = os.path.join(download_dir, extract_name)
+
+                    if os.path.exists(extract_dir):
+                        import shutil
+                        shutil.rmtree(extract_dir)
+
                     os.makedirs(extract_dir, exist_ok=True)
                     progress(0.6, desc="tar.gzファイルを展開中...")
                     tar_ref.extractall(extract_dir)
