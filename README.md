@@ -520,6 +520,19 @@ pip install opencv-python-headless numpy==1.26
 
 ※ `sam3d-lidar:sam3-ready`イメージには既にOpenCVとnumpy 1.26がインストール済みです。
 
+**Blender要件（カメラポーズ抽出）:**
+
+Omniscientアプリで撮影したデータからカメラポーズを抽出するには、Blenderが必要です。カメラポーズがないと、すべての点群がカメラローカル座標で出力され、正しく統合されません（点群が「厚く」なる問題）。
+
+```bash
+# Blenderのインストール
+apt-get update && apt-get install -y blender
+
+# インストール確認
+which blender
+# → /usr/bin/blender
+```
+
 ## ライセンス
 
 TBD
