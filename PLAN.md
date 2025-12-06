@@ -944,6 +944,11 @@ python scripts/evaluate.py \
 | 融合パイプライン | `server/fusion/run.py` | 全モジュール統合 | ✅ 完了 |
 | **自動融合** | `server/fusion/auto_fuse.py` | SciPyベース自動融合 | ✅ 完了 |
 | Gaussian Splat変換 | `server/fusion/gaussian_splat.py` | GS PLY読み書き | ✅ 完了 |
+| **Omniscientローダー** | `server/multiview/omniscient_loader.py` | Omniscientデータ読み込み | ✅ 完了 |
+| **Alembicローダー** | `server/multiview/alembic_loader.py` | カメラポーズ抽出(bpy) | ✅ 完了 |
+| **SAM 3トラッカー** | `server/multiview/sam3_video_tracker.py` | ビデオトラッキング | ✅ 完了 |
+| **点群統合** | `server/multiview/pointcloud_fusion.py` | 多視点点群統合 | ✅ 完了 |
+| **多視点パイプライン** | `server/multiview/run.py` | 統合パイプライン | ✅ 完了 |
 | LLMオーケストレーター | `server/orchestrator/agent.py` | エージェント | 未実装 |
 
 ---
@@ -1233,6 +1238,70 @@ video_path = "recording/video.mp4"
 | 遮蔽部分 | 欠損あり | 補完される |
 | ノイズ | 単一計測 | 平均化で低減 |
 | 位置合わせ精度 | - | Omniscientポーズで高精度 |
+
+#### 使い方
+
+**統合パイプライン（推奨）:**
+
+```bash
+# セッション情報を確認
+python -m server.multiview.run experiments/omniscient_sample/003 --info
+
+# テキストプロンプトで追跡・統合（Dockerコンテナ内）
+python -m server.multiview.run experiments/omniscient_sample/003 --text "chair"
+
+# クリックプロンプトで追跡・統合
+python -m server.multiview.run experiments/omniscient_sample/003 --click 512,384
+
+# 事前計算マスクで統合のみ（SAM 3なしで実行可能）
+python -m server.multiview.run experiments/omniscient_sample/003 --masks output/masks
+```
+
+**個別モジュールの使用:**
+
+```bash
+# Omniscientデータ読み込みテスト
+python -m server.multiview.omniscient_loader experiments/omniscient_sample/003
+
+# ワールド座標系で点群エクスポート
+python -m server.multiview.omniscient_loader experiments/omniscient_sample/003 \
+    --export-ply --step 10
+
+# Alembicカメラポーズ抽出
+python -m server.multiview.alembic_loader experiments/omniscient_sample/003/003.abc
+
+# SAM 3ビデオトラッキング（Dockerコンテナ内）
+python -m server.multiview.sam3_video_tracker video.mp4 --text "椅子"
+
+# 点群統合のみ
+python -m server.multiview.pointcloud_fusion experiments/omniscient_sample/003 \
+    --masks output/masks -o fused.ply
+```
+
+**Pythonからの使用:**
+
+```python
+from server.multiview.omniscient_loader import OmniscientLoader
+from server.multiview.pointcloud_fusion import MultiViewPointCloudFusion
+
+# Omniscientデータを読み込み
+loader = OmniscientLoader("experiments/omniscient_sample/003")
+print(loader.summary())
+
+# フレームデータを取得
+frame = loader.get_frame(0, load_rgb=True)
+print(f"Depth shape: {frame.depth_map.shape}")
+
+# 点群をワールド座標系で生成
+intrinsics = loader.get_intrinsics(0)
+points = loader.depth_to_pointcloud_world(frame.depth_map, intrinsics, 0)
+print(f"Points: {len(points)}")
+
+# 多視点統合
+fusion = MultiViewPointCloudFusion(loader)
+result = fusion.fuse_from_mask_directory("output/masks", frame_step=5)
+print(f"Fused points: {len(result.points)}")
+```
 
 ### Phase 4: LLMオーケストレーション
 
