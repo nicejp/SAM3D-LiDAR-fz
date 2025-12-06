@@ -182,7 +182,8 @@ class SAM3VideoTracker:
                 print(f"Cache built to frame {frame_index} (direct method)")
             except Exception as e2:
                 print(f"Direct propagation also failed: {e2}")
-                # キャッシュ構築に失敗してもプロンプト追加を試みる
+                # キャッシュ構築失敗 - エラーを再送出
+                raise RuntimeError(f"Cache build failed: {e2}")
 
     def add_click_prompt(
         self,
