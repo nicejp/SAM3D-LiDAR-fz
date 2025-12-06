@@ -605,7 +605,7 @@ def run_fusion(
             result = pipeline.run_full_pipeline(
                 prompt_type=prompt_type,
                 prompt_frame=state.current_frame,
-                point_coords=state.click_point if prompt_type == "click" else None,
+                point_coords=[state.click_point] if prompt_type == "click" and state.click_point else None,
                 text=prompt_value if prompt_type == "text" else None,
                 frame_step=frame_step,
                 voxel_size=voxel_size if voxel_size > 0 else None,
