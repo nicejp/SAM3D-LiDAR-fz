@@ -620,7 +620,7 @@ def run_fusion(
                 max_depth=max_depth
             )
 
-            output_path = result.get('fused_pointcloud')
+            output_path = result.get('output_ply')
 
         else:
             # Without SAM 3, just generate full point cloud
