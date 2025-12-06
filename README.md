@@ -333,6 +333,71 @@ python3 -m server.fusion.auto_fuse \
 4. 閾値以内の点をスナップ
 5. LiDARスケールに変換してGaussian Splatを更新
 
+### Step 5b: 多視点LiDAR融合（高密度化）
+
+単一フレームのLiDARデータが粗すぎる場合、**Omniscientアプリ**で撮影した多視点データを統合して高密度な点群を生成できる。
+
+**Omniscientアプリ（iOS）:**
+- App Store: https://apps.apple.com/app/omniscient/id1609646889
+- 動画 + LiDAR深度 + カメラポーズを同期取得
+- エクスポート設定: Camera=`.abc` (Alembic), Third Party=`Blender`
+
+**使い方:**
+
+```bash
+# 1. セッション情報を確認
+python -m server.multiview.run experiments/omniscient_sample/003 --info
+
+# 2. テキストプロンプトで追跡・統合（Dockerコンテナ内で実行）
+docker run --gpus all --ipc=host --network=host \
+    -v ~/SAM3D-LiDAR-fz:/workspace \
+    -it lidar-llm-mcp:sam3-tested
+
+export PYTHONPATH=/workspace:/workspace/sam3:$PYTHONPATH
+python -m server.multiview.run experiments/omniscient_sample/003 --text "chair"
+
+# 3. クリックプロンプトで追跡・統合
+python -m server.multiview.run experiments/omniscient_sample/003 --click 512,384
+
+# 4. 事前計算されたマスクで統合のみ（SAM 3なしで実行可能）
+python -m server.multiview.run experiments/omniscient_sample/003 --masks output/masks
+```
+
+**オプション:**
+| オプション | 説明 | デフォルト |
+|-----------|------|-----------|
+| `--text`, `-t` | テキストプロンプト（例: "椅子"） | - |
+| `--click`, `-c` | クリック座標（例: 512,384） | - |
+| `--masks`, `-m` | 既存マスクディレクトリ（SAM 3スキップ） | - |
+| `--frame`, `-f` | プロンプトフレーム | 0 |
+| `--step` | フレーム間隔 | 1 |
+| `--voxel` | ボクセルダウンサンプリングサイズ | None |
+| `--max-depth` | 最大深度（メートル） | 10.0 |
+| `--min-depth` | 最小深度（メートル） | 0.1 |
+| `--info` | セッション情報のみ表示 | - |
+
+**処理フロー:**
+```
+Omniscientで撮影（動画+深度+カメラポーズ）
+    ↓
+SAM 3でテキスト/クリックプロンプト（1フレーム）
+    ↓
+SAM 3が全フレームにマスク自動伝播（ビデオトラッキング）
+    ↓
+各フレームのマスク×深度→3D点群
+    ↓
+Alembicカメラポーズでワールド座標に変換・統合
+    ↓
+高密度統合点群（output/fused_pointcloud.ply）
+```
+
+**期待効果:**
+| 項目 | 単一フレーム | 10フレーム統合 |
+|------|-------------|---------------|
+| 点群密度 | 約5,000点 | 50,000点以上 |
+| 遮蔽部分 | 欠損あり | 補完される |
+| ノイズ | 単一計測 | 平均化で低減 |
+
 ## ディレクトリ構成
 
 ```
@@ -357,14 +422,23 @@ SAM3D-LiDAR-fz/
 │   │   ├── icp_alignment.py     # ICP位置合わせ
 │   │   ├── visibility_check.py  # 可視判定
 │   │   └── shrinkwrap.py        # Shrinkwrap処理
+│   ├── multiview/               # 多視点LiDAR融合
+│   │   ├── omniscient_loader.py # Omniscientデータ読み込み
+│   │   ├── alembic_loader.py    # Alembicカメラポーズ抽出
+│   │   ├── sam3_video_tracker.py # SAM 3ビデオトラッキング
+│   │   ├── pointcloud_fusion.py # 多視点点群統合
+│   │   └── run.py               # 統合パイプライン
 │   └── orchestrator/            # LLMオーケストレーター（未実装）
 ├── ipad_app/                    # iPadアプリ (Swift)
 ├── blender_addon/               # Blenderアドオン
 ├── experiments/                 # 実験データ
+│   └── omniscient_sample/       # Omniscientサンプルデータ
 └── datasets/                    # 評価用データセット
 ```
 
 ## 保存されるデータ形式
+
+### iPadアプリからのデータ
 
 ```
 experiments/session_YYYYMMDD_HHMMSS/
@@ -379,6 +453,30 @@ experiments/session_YYYYMMDD_HHMMSS/
 │   └── ...
 └── metadata.json             # セッション情報
 ```
+
+### Omniscientアプリからのデータ
+
+```
+experiments/omniscient_sample/{session_name}/
+├── {session_name}.abc          # カメラポーズ（Alembic/Ogawa形式）
+├── {session_name}.mov          # RGB動画（1080x1920, 60fps）
+├── {session_name}.omni         # メタデータJSON
+├── {session_name}_depth/       # LiDAR深度フレーム
+│   ├── YYYYMMDD_HHMMSS_depth_00000.png   # 16-bit grayscale, 144x256
+│   └── ...
+├── {session_name}_depthConfidence/  # 深度信頼度
+│   └── *.png
+└── scan_*.obj                  # 3Dメッシュ（スキャン結果）
+```
+
+**Omniscientデータ仕様:**
+| 項目 | 値 |
+|------|-----|
+| 動画解像度 | 1080x1920 (縦向き) |
+| 動画フレームレート | 60fps |
+| 深度画像サイズ | 144x256 px |
+| 深度フォーマット | 16-bit grayscale PNG |
+| 深度単位 | mm（ミリメートル） |
 
 ## 技術スタック
 

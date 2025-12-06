@@ -1,0 +1,435 @@
+#!/usr/bin/env python3
+"""
+SAM 3 Video Tracker
+
+SAM 3のビデオトラッキング機能を使用して、複数フレームにわたって
+オブジェクトをセグメントする。
+
+使い方（Dockerコンテナ内で実行）:
+    # クリックプロンプトで追跡
+    python -m server.multiview.sam3_video_tracker video.mp4 --click 512,384
+
+    # テキストプロンプトで追跡
+    python -m server.multiview.sam3_video_tracker video.mp4 --text "椅子"
+
+    # Omniscientセッションから実行
+    python -m server.multiview.sam3_video_tracker experiments/omniscient_sample/003 --text "chair"
+
+注意:
+    SAM 3はDockerコンテナ内で実行する必要があります:
+    docker run --gpus all --ipc=host --network=host \\
+        -v ~/SAM3D-LiDAR-fz:/workspace \\
+        -it lidar-llm-mcp:sam3-tested
+"""
+
+import os
+import json
+import argparse
+from pathlib import Path
+from typing import Optional, List, Dict, Tuple, Union
+from dataclasses import dataclass
+import numpy as np
+
+# SAM 3 imports
+HAS_SAM3 = False
+try:
+    import torch
+    from sam3.model_builder import build_sam3_video_predictor
+    HAS_SAM3 = True
+except ImportError:
+    pass
+
+
+@dataclass
+class TrackingResult:
+    """トラッキング結果"""
+    frame_index: int
+    mask: np.ndarray  # (H, W) bool
+    score: float
+    object_id: int
+
+
+class SAM3VideoTracker:
+    """SAM 3を使用したビデオトラッキング"""
+
+    def __init__(self, device: str = "cuda"):
+        """
+        Args:
+            device: "cuda" or "cpu"
+        """
+        if not HAS_SAM3:
+            raise RuntimeError(
+                "SAM 3 is not installed. Please run inside Docker container:\n"
+                "docker run --gpus all --ipc=host --network=host \\\n"
+                "  -v ~/SAM3D-LiDAR-fz:/workspace \\\n"
+                "  -it lidar-llm-mcp:sam3-tested"
+            )
+
+        self.device = device
+        self.predictor = None
+        self._is_loaded = False
+        self._inference_state = None
+        self._video_path = None
+
+    def load_model(self):
+        """モデルを読み込み"""
+        if self._is_loaded:
+            return
+
+        print("Loading SAM 3 video model...")
+
+        if self.device == "cuda" and torch.cuda.is_available():
+            torch.autocast("cuda", dtype=torch.bfloat16).__enter__()
+
+        self.predictor = build_sam3_video_predictor(
+            device=self.device,
+            eval_mode=True,
+            load_from_HF=True
+        )
+
+        self._is_loaded = True
+        print("SAM 3 video model loaded!")
+
+    def start_session(self, video_path: str) -> str:
+        """
+        ビデオセッションを開始
+
+        Args:
+            video_path: 動画ファイルパス（MP4）またはJPEGフォルダ
+
+        Returns:
+            session_id: セッションID
+        """
+        self.load_model()
+
+        video_path = Path(video_path)
+
+        # Omniscientセッションの場合、動画ファイルを探す
+        if video_path.is_dir():
+            # .movファイルを探す
+            mov_files = list(video_path.glob("*.mov"))
+            if mov_files:
+                video_path = mov_files[0]
+            else:
+                # JPEGフォルダとして扱う
+                pass
+
+        self._video_path = str(video_path)
+        print(f"Starting session with: {self._video_path}")
+
+        # セッションを開始
+        self._inference_state = self.predictor.init_state(
+            video_path=self._video_path
+        )
+
+        return id(self._inference_state)
+
+    def add_click_prompt(
+        self,
+        frame_index: int,
+        point_coords: List[Tuple[int, int]],
+        point_labels: Optional[List[int]] = None,
+        object_id: int = 0
+    ) -> Dict:
+        """
+        クリックプロンプトを追加
+
+        Args:
+            frame_index: 対象フレーム
+            point_coords: クリック座標 [(x, y), ...]
+            point_labels: 各座標のラベル (1=前景, 0=背景)
+            object_id: オブジェクトID
+
+        Returns:
+            初期フレームのセグメント結果
+        """
+        if self._inference_state is None:
+            raise RuntimeError("Session not started. Call start_session() first.")
+
+        if point_labels is None:
+            point_labels = [1] * len(point_coords)
+
+        points = np.array(point_coords)
+        labels = np.array(point_labels)
+
+        # プロンプトを追加
+        _, out_obj_ids, out_mask_logits = self.predictor.add_new_points_or_box(
+            inference_state=self._inference_state,
+            frame_idx=frame_index,
+            obj_id=object_id,
+            points=points,
+            labels=labels
+        )
+
+        # マスクを生成
+        mask = (out_mask_logits[0] > 0).cpu().numpy().squeeze()
+
+        return {
+            "frame_index": frame_index,
+            "object_id": object_id,
+            "mask": mask,
+            "mask_logits": out_mask_logits[0].cpu().numpy()
+        }
+
+    def add_text_prompt(
+        self,
+        frame_index: int,
+        text: str,
+        object_id: int = 0
+    ) -> Dict:
+        """
+        テキストプロンプトを追加
+
+        Args:
+            frame_index: 対象フレーム（-1で全フレーム自動検出）
+            text: テキスト記述（例: "yellow chair"）
+            object_id: オブジェクトID
+
+        Returns:
+            初期フレームのセグメント結果
+        """
+        if self._inference_state is None:
+            raise RuntimeError("Session not started. Call start_session() first.")
+
+        # テキストプロンプトを追加
+        _, out_obj_ids, out_mask_logits = self.predictor.add_new_text(
+            inference_state=self._inference_state,
+            frame_idx=frame_index,
+            obj_id=object_id,
+            text=text
+        )
+
+        # マスクを生成
+        mask = (out_mask_logits[0] > 0).cpu().numpy().squeeze()
+
+        return {
+            "frame_index": frame_index,
+            "object_id": object_id,
+            "text": text,
+            "mask": mask,
+            "mask_logits": out_mask_logits[0].cpu().numpy()
+        }
+
+    def propagate(
+        self,
+        start_frame: int = 0,
+        end_frame: Optional[int] = None,
+        reverse: bool = False
+    ) -> List[TrackingResult]:
+        """
+        マスクを他のフレームに伝播
+
+        Args:
+            start_frame: 開始フレーム
+            end_frame: 終了フレーム（None=最後まで）
+            reverse: 逆方向に伝播するか
+
+        Returns:
+            各フレームのトラッキング結果
+        """
+        if self._inference_state is None:
+            raise RuntimeError("Session not started. Call start_session() first.")
+
+        results = []
+
+        # ビデオを伝播
+        for frame_idx, out_obj_ids, out_mask_logits in self.predictor.propagate_in_video(
+            inference_state=self._inference_state,
+            start_frame_idx=start_frame,
+            max_frame_num_to_track=end_frame,
+            reverse=reverse
+        ):
+            for obj_id, mask_logits in zip(out_obj_ids, out_mask_logits):
+                mask = (mask_logits > 0).cpu().numpy().squeeze()
+                score = float(torch.sigmoid(mask_logits).max().cpu().numpy())
+
+                results.append(TrackingResult(
+                    frame_index=frame_idx,
+                    mask=mask,
+                    score=score,
+                    object_id=obj_id
+                ))
+
+            if frame_idx % 50 == 0:
+                print(f"  Propagated to frame {frame_idx}")
+
+        return results
+
+    def track_object(
+        self,
+        video_path: str,
+        prompt_type: str = "click",
+        prompt_frame: int = 0,
+        point_coords: Optional[List[Tuple[int, int]]] = None,
+        text: Optional[str] = None,
+        propagate_forward: bool = True,
+        propagate_backward: bool = True
+    ) -> List[TrackingResult]:
+        """
+        オブジェクトを追跡（セッション開始からトラッキングまで一括実行）
+
+        Args:
+            video_path: 動画ファイルパス
+            prompt_type: "click" or "text"
+            prompt_frame: プロンプトを追加するフレーム
+            point_coords: クリック座標（prompt_type="click"の場合）
+            text: テキスト記述（prompt_type="text"の場合）
+            propagate_forward: 前方向に伝播
+            propagate_backward: 後方向に伝播
+
+        Returns:
+            全フレームのトラッキング結果
+        """
+        # セッション開始
+        self.start_session(video_path)
+
+        # プロンプト追加
+        if prompt_type == "click":
+            if point_coords is None:
+                raise ValueError("point_coords is required for click prompt")
+            self.add_click_prompt(prompt_frame, point_coords)
+        elif prompt_type == "text":
+            if text is None:
+                raise ValueError("text is required for text prompt")
+            self.add_text_prompt(prompt_frame, text)
+        else:
+            raise ValueError(f"Unknown prompt_type: {prompt_type}")
+
+        # 伝播
+        all_results = []
+
+        if propagate_forward:
+            print("Propagating forward...")
+            forward_results = self.propagate(start_frame=prompt_frame, reverse=False)
+            all_results.extend(forward_results)
+
+        if propagate_backward and prompt_frame > 0:
+            print("Propagating backward...")
+            backward_results = self.propagate(start_frame=prompt_frame, reverse=True)
+            all_results.extend(backward_results)
+
+        # フレーム順にソート
+        all_results.sort(key=lambda r: r.frame_index)
+
+        return all_results
+
+    def save_masks(
+        self,
+        results: List[TrackingResult],
+        output_dir: str,
+        save_png: bool = True,
+        save_npy: bool = True
+    ):
+        """
+        マスクをファイルに保存
+
+        Args:
+            results: トラッキング結果
+            output_dir: 出力ディレクトリ
+            save_png: PNG画像として保存
+            save_npy: NumPy配列として保存
+        """
+        from PIL import Image
+
+        output_path = Path(output_dir)
+        output_path.mkdir(parents=True, exist_ok=True)
+
+        for result in results:
+            base_name = f"mask_{result.frame_index:06d}_obj{result.object_id}"
+
+            if save_png:
+                mask_img = Image.fromarray((result.mask * 255).astype(np.uint8))
+                mask_img.save(output_path / f"{base_name}.png")
+
+            if save_npy:
+                np.save(output_path / f"{base_name}.npy", result.mask)
+
+        print(f"Saved {len(results)} masks to {output_dir}")
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="SAM 3ビデオトラッキング",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+使用例:
+  # クリックプロンプトで追跡
+  python -m server.multiview.sam3_video_tracker video.mp4 --click 512,384
+
+  # テキストプロンプトで追跡
+  python -m server.multiview.sam3_video_tracker video.mp4 --text "椅子"
+
+  # Omniscientセッションから実行
+  python -m server.multiview.sam3_video_tracker experiments/omniscient_sample/003 --text "chair"
+
+注意: SAM 3はDockerコンテナ内で実行する必要があります
+        """
+    )
+
+    parser.add_argument("video_path", help="動画ファイルまたはOmniscientセッションディレクトリ")
+    parser.add_argument("--click", "-c", help="クリック座標 (x,y)")
+    parser.add_argument("--text", "-t", help="テキストプロンプト")
+    parser.add_argument("--frame", "-f", type=int, default=0, help="プロンプトフレーム")
+    parser.add_argument("--output", "-o", help="マスク出力ディレクトリ")
+    parser.add_argument("--device", "-d", default="cuda", help="デバイス (cuda/cpu)")
+
+    args = parser.parse_args()
+
+    if not HAS_SAM3:
+        print("Error: SAM 3 is not installed.")
+        print("Please run inside Docker container:")
+        print("  docker run --gpus all --ipc=host --network=host \\")
+        print("    -v ~/SAM3D-LiDAR-fz:/workspace \\")
+        print("    -it lidar-llm-mcp:sam3-tested")
+        return
+
+    # トラッカーを初期化
+    tracker = SAM3VideoTracker(device=args.device)
+
+    # プロンプトを設定
+    prompt_type = None
+    point_coords = None
+    text = None
+
+    if args.click:
+        prompt_type = "click"
+        x, y = map(int, args.click.split(","))
+        point_coords = [(x, y)]
+    elif args.text:
+        prompt_type = "text"
+        text = args.text
+    else:
+        print("Error: Either --click or --text is required")
+        return
+
+    # トラッキング実行
+    print(f"=== SAM 3 Video Tracking ===")
+    print(f"Video: {args.video_path}")
+    print(f"Prompt: {prompt_type} ({point_coords or text})")
+    print(f"Frame: {args.frame}")
+
+    results = tracker.track_object(
+        video_path=args.video_path,
+        prompt_type=prompt_type,
+        prompt_frame=args.frame,
+        point_coords=point_coords,
+        text=text
+    )
+
+    print(f"\nTracked {len(results)} frames")
+
+    # マスク保存
+    if args.output:
+        tracker.save_masks(results, args.output)
+    else:
+        # デフォルト出力先
+        video_path = Path(args.video_path)
+        if video_path.is_dir():
+            output_dir = video_path / "output" / "masks"
+        else:
+            output_dir = video_path.parent / "output" / "masks"
+        tracker.save_masks(results, str(output_dir))
+
+
+if __name__ == "__main__":
+    main()
