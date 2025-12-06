@@ -1171,21 +1171,25 @@ video_path = "recording/video.mp4"
 
 #### 実装計画
 
-- [ ] Omniscientデータ読み込み
+- [x] Omniscientデータ読み込み ✅ (2025/12/6)
   - 動画・深度・カメラポーズのパース
-  - Alembic (.abc) からカメラポーズ抽出
+  - Alembic (.abc) からカメラポーズ抽出（bpyで実装）
   - .omni JSON からカメラ内部パラメータ取得
   - `server/multiview/omniscient_loader.py`
-- [ ] SAM 3ビデオトラッキング統合
+  - `server/multiview/alembic_loader.py`
+- [x] SAM 3ビデオトラッキング統合 ✅ (2025/12/6)
   - 1フレームでクリック/テキストセグメント → 他フレームに自動伝播
   - テキストプロンプト対応（例: "椅子"）
+  - Dockerコンテナ内で実行（SAM 3環境が必要）
   - `server/multiview/sam3_video_tracker.py`
-- [ ] 多視点点群統合
+- [x] 多視点点群統合 ✅ (2025/12/6)
   - 各フレームからセグメント点群を抽出
-  - カメラポーズで位置合わせ（ICPより高精度）
+  - カメラポーズで位置合わせ（Alembicから高精度ポーズ取得）
+  - ボクセルダウンサンプリング対応
   - `server/multiview/pointcloud_fusion.py`
-- [ ] 統合パイプライン
+- [x] 統合パイプライン ✅ (2025/12/6)
   - Omniscientデータから自動処理
+  - 事前計算マスクでのSAM 3なし実行対応
   - `server/multiview/run.py`
 
 #### 処理フロー
