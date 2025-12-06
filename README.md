@@ -346,14 +346,15 @@ python3 -m server.fusion.auto_fuse \
 
 ```bash
 # 事前準備: OpenCVをインストール（ビデオ表示に必要）
-pip install opencv-python-headless
+# SAM3はnumpy 1.26が必要なため、numpyのバージョンを固定
+pip install opencv-python-headless numpy==1.26
 
 # Web UIを起動（注意: .py は付けない）
 python -m server.multiview.web_ui --port 7861
 # → ブラウザで http://localhost:7861 にアクセス
 ```
 
-**注意:** Dockerコンテナを再起動した場合、OpenCVを再インストールする必要があります。
+**注意:** Dockerコンテナを再起動した場合、OpenCVとnumpyを再インストールする必要があります。
 
 **Web UIの使い方:**
 
