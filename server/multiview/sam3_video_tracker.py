@@ -205,15 +205,18 @@ class SAM3VideoTracker:
         # 点プロンプトの前に特徴キャッシュを構築（必須）
         self._build_cache_for_frame(frame_index)
 
-        # 絶対座標を相対座標（0-1の範囲）に変換
-        points_rel = [[x / img_width, y / img_height] for x, y in point_coords]
+        # 座標形式: SAM 3は絶対ピクセル座標を期待
+        points_abs = [[float(x), float(y)] for x, y in point_coords]
+
+        print(f"Adding click prompt: frame={frame_index}")
+        print(f"  Absolute coords: {points_abs}")
+        print(f"  Image size: {img_width}x{img_height}")
 
         # テンソルに変換
-        points_tensor = torch.tensor(points_rel, dtype=torch.float32)
+        points_tensor = torch.tensor(points_abs, dtype=torch.float32)
         labels_tensor = torch.tensor(point_labels, dtype=torch.int32)
 
         # handle_requestを使用（新API）
-        print(f"Adding click prompt: frame={frame_index}, points_rel={points_rel}, labels={point_labels}")
         response = self.predictor.handle_request(
             request=dict(
                 type="add_prompt",
