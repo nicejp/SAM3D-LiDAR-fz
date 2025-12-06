@@ -230,16 +230,24 @@ class SAM3VideoTracker:
             outputs = response["outputs"]
             if isinstance(outputs, dict):
                 # obj_idに対応するマスクを取得
-                if object_id in outputs:
-                    mask = outputs[object_id].get("mask")
-                    if mask is not None and hasattr(mask, 'cpu'):
-                        mask = mask.cpu().numpy()
-                # または最初のマスクを取得
-                elif len(outputs) > 0:
+                obj_output = outputs.get(object_id)
+                if obj_output is None and len(outputs) > 0:
+                    # 最初のオブジェクトを取得
                     first_key = list(outputs.keys())[0]
-                    mask = outputs[first_key].get("mask")
-                    if mask is not None and hasattr(mask, 'cpu'):
-                        mask = mask.cpu().numpy()
+                    obj_output = outputs[first_key]
+
+                if obj_output is not None:
+                    # obj_output が直接マスクの場合（numpy.ndarray or Tensor）
+                    if isinstance(obj_output, np.ndarray):
+                        mask = obj_output
+                    elif hasattr(obj_output, 'cpu'):
+                        # PyTorch tensor
+                        mask = obj_output.cpu().numpy()
+                    elif isinstance(obj_output, dict):
+                        # 辞書形式の場合
+                        mask = obj_output.get("mask")
+                        if mask is not None and hasattr(mask, 'cpu'):
+                            mask = mask.cpu().numpy()
 
         return {
             "frame_index": frame_index,
