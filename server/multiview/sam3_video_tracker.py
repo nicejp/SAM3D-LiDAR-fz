@@ -322,6 +322,8 @@ class SAM3VideoTracker:
         if self._session_id is None:
             raise RuntimeError("Session not started. Call start_session() first.")
 
+        print(f"Adding text prompt: frame={frame_index}, text=\"{text}\"")
+
         # テキストプロンプトを追加 (handle_request形式)
         response = self.predictor.handle_request(
             request=dict(
@@ -329,21 +331,53 @@ class SAM3VideoTracker:
                 session_id=self._session_id,
                 frame_index=frame_index,
                 text=text,
+                obj_id=object_id,
             )
         )
 
-        # 結果からマスクを取得
+        # デバッグ: レスポンスの内容を確認
+        print(f"add_text_prompt response keys: {response.keys() if response else 'None'}")
+        if response:
+            for key, value in response.items():
+                if key == "outputs":
+                    print(f"  outputs type: {type(value)}")
+                    if isinstance(value, dict):
+                        for k, v in value.items():
+                            print(f"    outputs[{k}] type: {type(v)}, shape: {v.shape if hasattr(v, 'shape') else 'N/A'}")
+                else:
+                    print(f"  {key}: {type(value)}")
+
+        # 結果からマスクを取得（add_click_promptと同じロジック）
         mask = None
         if response and "outputs" in response:
             outputs = response["outputs"]
             if isinstance(outputs, dict):
-                # 最初のオブジェクトのマスクを取得
-                for obj_id, obj_data in outputs.items():
-                    if "mask" in obj_data:
-                        mask = obj_data["mask"]
-                        if hasattr(mask, 'cpu'):
-                            mask = mask.cpu().numpy()
-                        break
+                # 新API形式: out_binary_masks にマスクが格納される
+                if "out_binary_masks" in outputs:
+                    binary_masks = outputs["out_binary_masks"]
+                    if binary_masks is not None and len(binary_masks) > 0:
+                        # shape: (num_objects, height, width) -> 最初のマスクを取得
+                        mask = binary_masks[0]
+                        total_pixels = mask.size
+                        mask_sum = mask.sum()
+                        print(f"Extracted mask shape: {mask.shape}")
+                        print(f"  Mask sum: {mask_sum} / {total_pixels} ({100*mask_sum/total_pixels:.1f}%)")
+                else:
+                    # 旧API形式: obj_id をキーとする辞書
+                    obj_output = outputs.get(object_id)
+                    if obj_output is None and len(outputs) > 0:
+                        first_key = list(outputs.keys())[0]
+                        obj_output = outputs[first_key]
+
+                    if obj_output is not None:
+                        if isinstance(obj_output, np.ndarray):
+                            mask = obj_output
+                        elif hasattr(obj_output, 'cpu'):
+                            mask = obj_output.cpu().numpy()
+                        elif isinstance(obj_output, dict):
+                            mask = obj_output.get("mask")
+                            if mask is not None and hasattr(mask, 'cpu'):
+                                mask = mask.cpu().numpy()
 
         return {
             "frame_index": frame_index,
