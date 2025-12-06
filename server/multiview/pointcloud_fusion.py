@@ -258,6 +258,29 @@ class MultiViewPointCloudFusion:
         keep_indices = np.array(keep_indices)
         return points[keep_indices], keep_indices
 
+    def get_object_ids_from_masks(self, mask_dir: str) -> List[int]:
+        """
+        マスクディレクトリからオブジェクトIDのリストを取得
+
+        Args:
+            mask_dir: マスクファイルのディレクトリ
+
+        Returns:
+            オブジェクトIDのソート済みリスト
+        """
+        import re
+        mask_path = Path(mask_dir)
+        mask_files = list(mask_path.glob("mask_*.png")) + list(mask_path.glob("mask_*.npy"))
+
+        object_ids = set()
+        for mf in mask_files:
+            # _obj{数字} パターンを検索
+            match = re.search(r'_obj(\d+)', mf.name)
+            if match:
+                object_ids.add(int(match.group(1)))
+
+        return sorted(object_ids)
+
     def fuse_from_mask_directory(
         self,
         mask_dir: str,
@@ -265,7 +288,8 @@ class MultiViewPointCloudFusion:
         use_world_coords: bool = True,
         max_depth: float = 10.0,
         min_depth: float = 0.1,
-        voxel_downsample: Optional[float] = None
+        voxel_downsample: Optional[float] = None,
+        object_id: Optional[int] = None
     ) -> FusedPointCloud:
         """
         マスクディレクトリから点群を統合
@@ -277,6 +301,7 @@ class MultiViewPointCloudFusion:
             max_depth: 最大深度
             min_depth: 最小深度
             voxel_downsample: ボクセルダウンサンプリングのサイズ
+            object_id: 特定のオブジェクトIDのみを使用（None=全オブジェクト）
 
         Returns:
             FusedPointCloud: 統合された点群
@@ -288,6 +313,15 @@ class MultiViewPointCloudFusion:
 
         if not mask_files:
             raise FileNotFoundError(f"No mask files found in {mask_dir}")
+
+        # オブジェクトIDでフィルタリング
+        if object_id is not None:
+            filtered_files = []
+            for mf in mask_files:
+                if f"_obj{object_id}." in mf.name or f"_obj{object_id}_" in mf.name:
+                    filtered_files.append(mf)
+            mask_files = filtered_files
+            print(f"Filtered to object_id={object_id}: {len(mask_files)} masks")
 
         # フレームインデックスとマスクを取得
         masks = {}
@@ -317,6 +351,63 @@ class MultiViewPointCloudFusion:
             min_depth=min_depth,
             voxel_downsample=voxel_downsample
         )
+
+    def fuse_all_objects(
+        self,
+        mask_dir: str,
+        frame_step: int = 1,
+        use_world_coords: bool = True,
+        max_depth: float = 10.0,
+        min_depth: float = 0.1,
+        voxel_downsample: Optional[float] = None
+    ) -> Dict[int, FusedPointCloud]:
+        """
+        全オブジェクトの点群を個別に統合
+
+        Args:
+            mask_dir: マスクファイルのディレクトリ
+            frame_step: フレーム間隔
+            use_world_coords: ワールド座標系に変換するか
+            max_depth: 最大深度
+            min_depth: 最小深度
+            voxel_downsample: ボクセルダウンサンプリングのサイズ
+
+        Returns:
+            オブジェクトID -> FusedPointCloud の辞書
+        """
+        object_ids = self.get_object_ids_from_masks(mask_dir)
+
+        if not object_ids:
+            # オブジェクトIDがない場合は全マスクを1つのオブジェクトとして処理
+            print("No object IDs found in mask files, treating all masks as one object")
+            result = self.fuse_from_mask_directory(
+                mask_dir,
+                frame_step=frame_step,
+                use_world_coords=use_world_coords,
+                max_depth=max_depth,
+                min_depth=min_depth,
+                voxel_downsample=voxel_downsample
+            )
+            return {0: result}
+
+        print(f"Found {len(object_ids)} objects: {object_ids}")
+        results = {}
+
+        for obj_id in object_ids:
+            print(f"\n--- Processing object {obj_id} ---")
+            result = self.fuse_from_mask_directory(
+                mask_dir,
+                frame_step=frame_step,
+                use_world_coords=use_world_coords,
+                max_depth=max_depth,
+                min_depth=min_depth,
+                voxel_downsample=voxel_downsample,
+                object_id=obj_id
+            )
+            results[obj_id] = result
+            print(f"Object {obj_id}: {len(result.points)} points")
+
+        return results
 
 
 def save_ply(
@@ -374,6 +465,7 @@ def main():
     parser.add_argument("--voxel", type=float, help="ボクセルダウンサンプリングサイズ")
     parser.add_argument("--max-depth", type=float, default=10.0, help="最大深度")
     parser.add_argument("--min-depth", type=float, default=0.1, help="最小深度")
+    parser.add_argument("--object-id", type=int, help="特定のオブジェクトIDのみを使用（例: 0, 3）")
 
     args = parser.parse_args()
 
@@ -388,20 +480,44 @@ def main():
 
     # 点群統合
     fusion = MultiViewPointCloudFusion(loader)
-    result = fusion.fuse_from_mask_directory(
-        args.masks,
-        frame_step=args.step,
-        use_world_coords=loader.has_camera_poses,
-        max_depth=args.max_depth,
-        min_depth=args.min_depth,
-        voxel_downsample=args.voxel
-    )
 
-    print(f"\nFused point cloud: {len(result.points)} points")
+    if args.object_id is not None:
+        # 特定のオブジェクトIDのみ処理
+        print(f"Object ID filter: {args.object_id}")
+        result = fusion.fuse_from_mask_directory(
+            args.masks,
+            frame_step=args.step,
+            use_world_coords=loader.has_camera_poses,
+            max_depth=args.max_depth,
+            min_depth=args.min_depth,
+            voxel_downsample=args.voxel,
+            object_id=args.object_id
+        )
+        print(f"\nFused point cloud: {len(result.points)} points")
+        save_ply(result.points, args.output, result.colors)
+        print(f"Saved to: {args.output}")
+    else:
+        # 全オブジェクトを個別に処理
+        results = fusion.fuse_all_objects(
+            args.masks,
+            frame_step=args.step,
+            use_world_coords=loader.has_camera_poses,
+            max_depth=args.max_depth,
+            min_depth=args.min_depth,
+            voxel_downsample=args.voxel
+        )
 
-    # 保存
-    save_ply(result.points, args.output, result.colors)
-    print(f"Saved to: {args.output}")
+        # 各オブジェクトを個別のファイルに保存
+        output_path = Path(args.output)
+        base_name = output_path.stem
+        suffix = output_path.suffix
+
+        print(f"\n=== Saving {len(results)} point clouds ===")
+        for obj_id, result in results.items():
+            if len(result.points) > 0:
+                output_file = output_path.parent / f"{base_name}_obj{obj_id}{suffix}"
+                save_ply(result.points, str(output_file), result.colors)
+                print(f"Object {obj_id}: {len(result.points)} points -> {output_file}")
 
 
 if __name__ == "__main__":
