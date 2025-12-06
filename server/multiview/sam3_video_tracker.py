@@ -70,7 +70,7 @@ class SAM3VideoTracker:
         self._is_loaded = False
         self._session_id = None
         self._video_path = None
-        self._cache_built_frame = -1  # キャッシュが構築済みのフレーム (-1 = 未構築)
+        self._cache_built = False  # 全フレームキャッシュが構築済みか
 
     def load_model(self):
         """モデルを読み込み"""
@@ -132,58 +132,42 @@ class SAM3VideoTracker:
             )
         )
 
-        # キャッシュ構築フラグをリセット
-        self._cache_built_frame = -1
+        # キャッシュフラグをリセットして全フレームのキャッシュを構築
+        self._cache_built = False
+        self._build_full_cache()
 
         return self._session_id
 
-    def _build_cache_for_frame(self, frame_index: int):
+    def _build_full_cache(self):
         """
-        特定フレームまでの特徴キャッシュを構築
+        全フレームの特徴キャッシュを構築
 
-        点ベースのプロンプトを使用する前に必要
-
-        Args:
-            frame_index: キャッシュを構築するフレーム
+        点ベースのプロンプトを使用するために必要。
+        セッション開始時に一度だけ呼び出す。
         """
-        # 既にキャッシュが構築済みの場合はスキップ
-        if self._cache_built_frame >= frame_index:
-            print(f"Cache already built to frame {self._cache_built_frame}, skipping")
+        if self._cache_built:
+            print("Cache already built, skipping")
             return
 
-        print(f"Building feature cache to frame {frame_index}...")
+        print("Building feature cache for all frames...")
 
-        # 前方向に伝播してキャッシュを構築
+        # 全フレームに対して前方向に伝播してキャッシュを構築
         try:
-            response = self.predictor.handle_request(
-                request=dict(
-                    type="propagate_in_video",
-                    session_id=self._session_id,
-                    start_frame_idx=0,
-                    max_frame_num_to_track=frame_index + 1,
-                    propagation_direction="forward",
-                )
-            )
-            self._cache_built_frame = frame_index
-            print(f"Cache built to frame {frame_index}")
+            # propagate_in_videoを直接呼ぶ（handle_requestは使えない）
+            frame_count = 0
+            for result in self.predictor.propagate_in_video(
+                session_id=self._session_id,
+                start_frame_idx=0,
+                max_frame_num_to_track=None,  # 全フレーム
+                propagation_direction="forward",
+            ):
+                frame_count += 1
+            self._cache_built = True
+            print(f"Cache built for {frame_count} frames")
         except Exception as e:
-            # handle_requestで失敗したら直接メソッドを試す
-            print(f"handle_request failed, trying direct method: {e}")
-            try:
-                # propagate_in_videoを直接呼ぶ
-                for result in self.predictor.propagate_in_video(
-                    session_id=self._session_id,
-                    start_frame_idx=0,
-                    max_frame_num_to_track=frame_index + 1,
-                    propagation_direction="forward",
-                ):
-                    pass  # 結果を消費してキャッシュを構築
-                self._cache_built_frame = frame_index
-                print(f"Cache built to frame {frame_index} (direct method)")
-            except Exception as e2:
-                print(f"Direct propagation also failed: {e2}")
-                # キャッシュ構築失敗 - エラーを再送出
-                raise RuntimeError(f"Cache build failed: {e2}")
+            print(f"Cache build failed: {e}")
+            # キャッシュ構築失敗してもセッションは続行可能（テキストプロンプトなど）
+            self._cache_built = False
 
     def add_click_prompt(
         self,
