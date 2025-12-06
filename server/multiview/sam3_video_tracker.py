@@ -70,6 +70,7 @@ class SAM3VideoTracker:
         self._is_loaded = False
         self._session_id = None
         self._video_path = None
+        self._cache_built_frame = -1  # キャッシュが構築済みのフレーム (-1 = 未構築)
 
     def load_model(self):
         """モデルを読み込み"""
@@ -131,6 +132,9 @@ class SAM3VideoTracker:
             )
         )
 
+        # キャッシュ構築フラグをリセット
+        self._cache_built_frame = -1
+
         return self._session_id
 
     def _build_cache_for_frame(self, frame_index: int):
@@ -142,6 +146,11 @@ class SAM3VideoTracker:
         Args:
             frame_index: キャッシュを構築するフレーム
         """
+        # 既にキャッシュが構築済みの場合はスキップ
+        if self._cache_built_frame >= frame_index:
+            print(f"Cache already built to frame {self._cache_built_frame}, skipping")
+            return
+
         print(f"Building feature cache to frame {frame_index}...")
 
         # 前方向に伝播してキャッシュを構築
@@ -155,6 +164,7 @@ class SAM3VideoTracker:
                     propagation_direction="forward",
                 )
             )
+            self._cache_built_frame = frame_index
             print(f"Cache built to frame {frame_index}")
         except Exception as e:
             # handle_requestで失敗したら直接メソッドを試す
@@ -168,6 +178,7 @@ class SAM3VideoTracker:
                     propagation_direction="forward",
                 ):
                     pass  # 結果を消費してキャッシュを構築
+                self._cache_built_frame = frame_index
                 print(f"Cache built to frame {frame_index} (direct method)")
             except Exception as e2:
                 print(f"Direct propagation also failed: {e2}")
