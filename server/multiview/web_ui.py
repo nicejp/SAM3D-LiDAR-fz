@@ -620,7 +620,9 @@ def run_fusion(
                 max_depth=max_depth
             )
 
-            output_path = result.get('output_ply')
+            # 複数オブジェクト対応
+            output_plys = result.get('output_plys', [])
+            output_path = result.get('output_ply')  # 後方互換性
 
         else:
             # Without SAM 3, just generate full point cloud
@@ -686,7 +688,20 @@ def run_fusion(
 
         progress(1.0, desc="完了!")
 
-        result_text = f"""
+        # 結果テキストを生成
+        if sam3_available and output_plys:
+            files_text = "\n".join([f"  - {p}" for p in output_plys])
+            result_text = f"""
+処理完了!
+
+出力ファイル ({len(output_plys)} オブジェクト):
+{files_text}
+
+プロンプト: {prompt_type} = {prompt_value}
+フレーム間隔: {frame_step}
+"""
+        else:
+            result_text = f"""
 処理完了!
 
 出力ファイル: {output_path}

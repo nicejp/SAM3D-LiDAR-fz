@@ -101,9 +101,9 @@ class MultiViewPipeline:
         voxel_size: Optional[float] = None,
         max_depth: float = 10.0,
         min_depth: float = 0.1
-    ) -> Path:
+    ) -> List[Path]:
         """
-        マスクから点群を統合
+        マスクから点群を統合（複数オブジェクト対応）
 
         Args:
             mask_dir: マスクディレクトリ
@@ -113,10 +113,12 @@ class MultiViewPipeline:
             min_depth: 最小深度
 
         Returns:
-            出力PLYファイルパス
+            出力PLYファイルパスのリスト
         """
         fusion = MultiViewPointCloudFusion(self.loader)
-        result = fusion.fuse_from_mask_directory(
+
+        # 全オブジェクトを個別に処理
+        results = fusion.fuse_all_objects(
             mask_dir,
             frame_step=frame_step,
             use_world_coords=self.loader.has_camera_poses,
@@ -125,14 +127,16 @@ class MultiViewPipeline:
             voxel_downsample=voxel_size
         )
 
-        # PLY保存
-        output_path = self.output_dir / "fused_pointcloud.ply"
-        save_ply(result.points, str(output_path), result.colors)
+        # 各オブジェクトを個別のファイルに保存
+        output_paths = []
+        for obj_id, result in results.items():
+            if len(result.points) > 0:
+                output_path = self.output_dir / f"fused_pointcloud_obj{obj_id}.ply"
+                save_ply(result.points, str(output_path), result.colors)
+                output_paths.append(output_path)
+                print(f"Object {obj_id}: {len(result.points)} points -> {output_path}")
 
-        print(f"Fused point cloud: {len(result.points)} points")
-        print(f"Saved to: {output_path}")
-
-        return output_path
+        return output_paths
 
     def run_full_pipeline(
         self,
@@ -178,14 +182,17 @@ class MultiViewPipeline:
 
         # Step 2: 点群統合
         print("\n=== Step 2: Point Cloud Fusion ===")
-        output_ply = self.run_fusion(
+        output_plys = self.run_fusion(
             str(mask_dir),
             frame_step=frame_step,
             voxel_size=voxel_size,
             max_depth=max_depth,
             min_depth=min_depth
         )
-        result["output_ply"] = str(output_ply)
+        result["output_plys"] = [str(p) for p in output_plys]
+        # 後方互換性のため最初のファイルを output_ply にも設定
+        if output_plys:
+            result["output_ply"] = str(output_plys[0])
 
         return result
 
