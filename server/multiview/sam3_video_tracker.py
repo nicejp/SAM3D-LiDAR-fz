@@ -249,12 +249,10 @@ class SAM3VideoTracker:
                 if "out_binary_masks" in outputs:
                     binary_masks = outputs["out_binary_masks"]
                     if binary_masks is not None and len(binary_masks) > 0:
-                        # shape: (num_objects, width, height) -> 最初のマスクを取得
+                        # shape: (num_objects, height, width) -> 最初のマスクを取得
                         mask = binary_masks[0]
-                        # (width, height) -> (height, width) に転置
-                        if len(mask.shape) == 2:
-                            mask = mask.T
-                        print(f"Extracted mask shape: {mask.shape}")
+                        # マスクは既に (height, width) 形式なので転置不要
+                        print(f"Extracted mask shape: {mask.shape}, sum: {mask.sum()}")
                 else:
                     # 旧API形式: obj_id をキーとする辞書
                     obj_output = outputs.get(object_id)
