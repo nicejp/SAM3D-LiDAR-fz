@@ -1245,20 +1245,10 @@ video_path = "recording/video.mp4"
 **Web UI（推奨）:**
 
 ```bash
-# 事前準備: OpenCVをインストール（ビデオ表示に必要）
-# SAM3はnumpy 1.26が必要なため、numpyのバージョンを固定
-pip install opencv-python-headless numpy==1.26
-
 # Web UIを起動（注意: .py は付けない）
 python -m server.multiview.web_ui --port 7861
 # → ブラウザで http://localhost:7861 にアクセス
 ```
-
-**注意:** Dockerコンテナを再起動した場合、OpenCVとnumpyを再インストールする必要があります。
-
-**OpenCVとnumpyバージョンの問題:**
-
-`opencv-python-headless`を単独でインストールすると、numpy 2.xが自動インストールされます。しかしSAM 3は`numpy==1.26`を必要とするため、依存関係が壊れてエラーが発生します。必ず`numpy==1.26`を同時に指定してインストールしてください。
 
 **Web UIの手順:**
 1. **タブ1: データソース** - URLからダウンロード or ローカルセッション選択

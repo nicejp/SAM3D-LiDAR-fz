@@ -345,16 +345,10 @@ python3 -m server.fusion.auto_fuse \
 **Web UIの起動:**
 
 ```bash
-# 事前準備: OpenCVをインストール（ビデオ表示に必要）
-# SAM3はnumpy 1.26が必要なため、numpyのバージョンを固定
-pip install opencv-python-headless numpy==1.26
-
 # Web UIを起動（注意: .py は付けない）
 python -m server.multiview.web_ui --port 7861
 # → ブラウザで http://localhost:7861 にアクセス
 ```
-
-**注意:** Dockerコンテナを再起動した場合、OpenCVとnumpyを再インストールする必要があります。
 
 **Web UIの使い方:**
 
@@ -514,19 +508,17 @@ experiments/omniscient_sample/{session_name}/
 |------|--------|
 | websocketsインポートエラー | `pip install websockets` |
 | SAM 3が動作しない | Dockerコンテナ内でPYTHONPATHを設定 |
-| OpenCVインストール後にSAM 3がエラー | `pip install opencv-python-headless numpy==1.26` で再インストール |
 
-**OpenCVとnumpyバージョンの問題:**
+**新規Dockerイメージセットアップ時のOpenCV/numpy問題:**
 
-`opencv-python-headless`を単独でインストールすると、numpy 2.xが自動インストールされます。しかしSAM 3は`numpy==1.26`を必要とするため、依存関係が壊れてエラーが発生します。
+新しいDockerイメージでOpenCVをインストールする場合、SAM 3との互換性に注意が必要です。`opencv-python-headless`を単独でインストールするとnumpy 2.xが自動インストールされますが、SAM 3は`numpy==1.26`を必要とします。
 
 ```bash
-# ❌ これだとnumpy 2.xがインストールされてSAM 3が壊れる
-pip install opencv-python-headless
-
-# ✅ 正しい方法: numpyバージョンを固定してインストール
+# ✅ 新規セットアップ時の正しいインストール方法
 pip install opencv-python-headless numpy==1.26
 ```
+
+※ `sam3d-lidar:sam3-ready`イメージには既にOpenCVとnumpy 1.26がインストール済みです。
 
 ## ライセンス
 
