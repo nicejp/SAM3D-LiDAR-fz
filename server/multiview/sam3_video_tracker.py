@@ -133,6 +133,46 @@ class SAM3VideoTracker:
 
         return self._session_id
 
+    def _build_cache_for_frame(self, frame_index: int):
+        """
+        特定フレームまでの特徴キャッシュを構築
+
+        点ベースのプロンプトを使用する前に必要
+
+        Args:
+            frame_index: キャッシュを構築するフレーム
+        """
+        print(f"Building feature cache to frame {frame_index}...")
+
+        # 前方向に伝播してキャッシュを構築
+        try:
+            response = self.predictor.handle_request(
+                request=dict(
+                    type="propagate_in_video",
+                    session_id=self._session_id,
+                    start_frame_idx=0,
+                    max_frame_num_to_track=frame_index + 1,
+                    propagation_direction="forward",
+                )
+            )
+            print(f"Cache built to frame {frame_index}")
+        except Exception as e:
+            # handle_requestで失敗したら直接メソッドを試す
+            print(f"handle_request failed, trying direct method: {e}")
+            try:
+                # propagate_in_videoを直接呼ぶ
+                for result in self.predictor.propagate_in_video(
+                    session_id=self._session_id,
+                    start_frame_idx=0,
+                    max_frame_num_to_track=frame_index + 1,
+                    propagation_direction="forward",
+                ):
+                    pass  # 結果を消費してキャッシュを構築
+                print(f"Cache built to frame {frame_index} (direct method)")
+            except Exception as e2:
+                print(f"Direct propagation also failed: {e2}")
+                # キャッシュ構築に失敗してもプロンプト追加を試みる
+
     def add_click_prompt(
         self,
         frame_index: int,
@@ -161,6 +201,9 @@ class SAM3VideoTracker:
 
         if point_labels is None:
             point_labels = [1] * len(point_coords)
+
+        # 点プロンプトの前に特徴キャッシュを構築（必須）
+        self._build_cache_for_frame(frame_index)
 
         # 絶対座標を相対座標（0-1の範囲）に変換
         points_rel = [[x / img_width, y / img_height] for x, y in point_coords]
