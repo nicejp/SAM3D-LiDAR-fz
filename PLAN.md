@@ -1213,11 +1213,17 @@ video_path = "recording/video.mp4"
   - 各フレームからセグメント点群を抽出
   - カメラポーズで位置合わせ（Alembicから高精度ポーズ取得）
   - ボクセルダウンサンプリング対応
+  - **ビデオ/カメラフレーム数の不一致に対応（スケーリング処理）**
+  - **35mm換算焦点距離からFOVを計算してfx/fyを正しく導出**
+  - **複数オブジェクトIDの自動検出と分離出力**
   - `server/multiview/pointcloud_fusion.py`
 - [x] 統合パイプライン ✅ (2025/12/6)
   - Omniscientデータから自動処理
   - 事前計算マスクでのSAM 3なし実行対応
+  - **オブジェクトごとに個別PLYファイルを出力**
   - `server/multiview/run.py`
+- [x] Web UI複数ファイルダウンロード対応 ✅ (2025/12/6)
+  - Gradioの`gr.Files`コンポーネントで複数ファイルを同時ダウンロード可能に
 
 #### 処理フロー
 
@@ -1260,6 +1266,53 @@ video_path = "recording/video.mp4"
 | 遮蔽部分 | 欠損あり | 補完される |
 | ノイズ | 単一計測 | 平均化で低減 |
 | 位置合わせ精度 | - | Omniscientポーズで高精度 |
+
+#### 技術的課題と解決策
+
+**課題1: ビデオフレームとカメラポーズのフレーム数不一致**
+
+Omniscientアプリでは、ビデオ（60fps）とカメラポーズの記録レートが異なる場合がある。
+
+```
+例: ビデオ426フレーム、カメラポーズ182フレーム
+    → 比率 182/426 = 0.427
+```
+
+**解決策:** `video_frame_to_camera_frame()` メソッドでスケーリング
+```python
+def video_frame_to_camera_frame(self, video_frame: int) -> int:
+    ratio = self.num_camera_poses / self.num_depth_frames
+    if ratio < 0.9 or ratio > 1.1:  # 10%以上の差異がある場合
+        camera_frame = int(video_frame * ratio)
+        return min(camera_frame, self.max_camera_frame)
+    return video_frame
+```
+
+**課題2: カメラ内部パラメータの計算**
+
+Omniscientは35mm換算焦点距離のみを提供。ピクセル単位のfx/fyを直接計算する必要がある。
+
+**解決策:** 35mm換算からFOVを経由してfx/fyを計算
+```python
+# 35mmフルフレームセンサーの半幅 = 18mm
+sensor_35mm_half_width = 18.0
+half_fov_rad = math.atan(sensor_35mm_half_width / focal_length_35mm)
+fx = (image_width / 2) / math.tan(half_fov_rad)
+```
+
+**課題3: 複数オブジェクトの混在**
+
+SAM 3のビデオトラッキングで複数オブジェクトを追跡すると、異なるオブジェクトIDのマスクが生成される。
+
+```
+mask_000000_obj0.png  ← オブジェクト0
+mask_000000_obj3.png  ← オブジェクト3
+```
+
+**解決策:** オブジェクトIDごとに個別の点群を生成
+- `get_object_ids_from_masks()`: マスクファイル名からオブジェクトIDを抽出
+- `fuse_all_objects()`: 各オブジェクトを個別に処理
+- 出力: `fused_pointcloud_obj0.ply`, `fused_pointcloud_obj3.ply`
 
 #### 使い方
 

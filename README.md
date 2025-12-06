@@ -380,8 +380,16 @@ SAM 3が全フレームにマスク自動伝播（ビデオトラッキング）
     ↓
 Alembicカメラポーズでワールド座標に変換・統合
     ↓
-高密度統合点群（output/fused_pointcloud.ply）
+高密度統合点群（output/fused_pointcloud_obj{N}.ply）
+    ※複数オブジェクトがある場合は自動的に分離出力
 ```
+
+**技術的な補正処理:**
+| 課題 | 解決方法 |
+|------|---------|
+| ビデオ/カメラフレーム数の不一致 | フレームレート比でスケーリング（例: 426→182フレーム） |
+| カメラ内部パラメータ | 35mm換算焦点距離からFOVを計算してfx/fyを導出 |
+| 複数オブジェクトの混在 | マスクファイル名からオブジェクトIDを自動検出し分離 |
 
 **期待効果:**
 | 項目 | 単一フレーム | 10フレーム統合 |
@@ -531,6 +539,39 @@ apt-get update && apt-get install -y blender
 # インストール確認
 which blender
 # → /usr/bin/blender
+```
+
+## 現在の状態と既知の制限
+
+### 実装済み機能 (2025/12/6時点)
+
+- **多視点LiDAR融合**: Omniscientデータから複数フレームの点群を統合
+- **SAM 3ビデオトラッキング**: クリックまたはテキストプロンプトでオブジェクトを追跡
+- **フレームレートスケーリング**: ビデオとカメラポーズのフレーム数不一致に対応
+- **複数オブジェクト対応**: 自動的にオブジェクトIDを検出し、個別のPLYファイルを出力
+- **Web UI**: セッション読み込み、マスク生成、点群統合をブラウザから実行可能
+
+### 既知の制限
+
+| 制限 | 詳細 |
+|------|------|
+| カメラ内部パラメータ | 35mm換算焦点距離からの推定のため、レンズ歪みは考慮されていない |
+| 点群品質 | LiDARの解像度（144x256）に依存、遠距離では精度が低下 |
+| SAM 3D統合 | DGX Spark (ARM64) では直接実行不可、WSL2での実行が必要 |
+
+### デバッグスクリプト
+
+問題発生時に使用できるデバッグスクリプト:
+
+```bash
+# カメラポーズとフレームマッピングの確認
+python debug_camera_poses.py experiments/omniscient_sample/003
+
+# 座標変換のテスト（flip_yzの効果）
+python debug_coordinate_test.py experiments/omniscient_sample/003
+
+# フレーム範囲ごとの点群重心を確認
+python debug_frame_ranges.py experiments/omniscient_sample/003 experiments/omniscient_sample/003/output/masks
 ```
 
 ## ライセンス
