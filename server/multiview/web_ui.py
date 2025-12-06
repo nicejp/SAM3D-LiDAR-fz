@@ -493,9 +493,9 @@ def create_ui():
         gr.Markdown("# 多視点LiDAR融合 Web UI")
         gr.Markdown("Omniscientデータから多視点点群を統合します")
 
-        with gr.Tabs():
+        with gr.Tabs() as tabs:
             # Tab 1: Data Source
-            with gr.TabItem("1. データソース"):
+            with gr.TabItem("1. データソース", id="tab_source"):
                 gr.Markdown("### データの取得方法を選択")
 
                 with gr.Row():
@@ -519,11 +519,11 @@ def create_ui():
                         )
                         refresh_btn = gr.Button("リスト更新")
 
-                load_btn = gr.Button("セッションを読み込む", variant="primary", size="lg")
+                load_btn = gr.Button("セッションを読み込む → 次へ", variant="primary", size="lg")
                 session_info = gr.Textbox(label="セッション情報", lines=6, interactive=False)
 
             # Tab 2: Object Selection
-            with gr.TabItem("2. オブジェクト選択"):
+            with gr.TabItem("2. オブジェクト選択", id="tab_select"):
                 gr.Markdown("### ビデオフレームをクリックしてオブジェクトを選択")
 
                 with gr.Row():
@@ -599,7 +599,7 @@ def create_ui():
                         )
 
             # Tab 3: Run Fusion
-            with gr.TabItem("3. 実行"):
+            with gr.TabItem("3. 実行", id="tab_run"):
                 gr.Markdown("### 点群統合を実行")
 
                 run_btn = gr.Button("点群統合を実行", variant="primary", size="lg")
@@ -628,6 +628,9 @@ def create_ui():
             fn=load_session,
             inputs=[session_dropdown],
             outputs=[frame_image, session_info, frame_slider]
+        ).then(
+            fn=lambda: gr.Tabs(selected="tab_select"),
+            outputs=[tabs]
         )
 
         frame_slider.change(
