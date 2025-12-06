@@ -342,7 +342,7 @@ python3 -m server.fusion.auto_fuse \
 - 動画 + LiDAR深度 + カメラポーズを同期取得
 - エクスポート設定: Camera=`.abc` (Alembic), Third Party=`Blender`
 
-**方法1: Web UI（推奨）**
+**Web UIの起動:**
 
 ```bash
 # Web UIを起動
@@ -350,51 +350,29 @@ python -m server.multiview.web_ui --port 7861
 # → ブラウザで http://localhost:7861 にアクセス
 ```
 
-Web UIでできること:
-1. **データソース選択**: URLからダウンロード or ローカルフォルダから選択
-2. **オブジェクト選択**: ビデオフレームをクリック or テキストプロンプト入力
-3. **パラメータ設定**: フレーム間隔、ボクセルサイズ、深度範囲
-4. **実行**: 点群統合を実行し、結果をダウンロード
+**Web UIの使い方:**
 
-**方法2: CLI**
+1. **タブ1: データソース**
+   - URLを入力して「ダウンロード」、または
+   - ドロップダウンからローカルセッションを選択
+   - 「セッションを読み込む」をクリック
 
-```bash
-# 1. セッション情報を確認
-python -m server.multiview.run experiments/omniscient_sample/003 --info
+2. **タブ2: オブジェクト選択**
+   - ビデオフレームをクリックしてオブジェクトを選択、または
+   - テキストプロンプトに「chair」などを入力
+   - フレーム間隔、ボクセルサイズ、深度範囲を設定
 
-# 2. テキストプロンプトで追跡・統合（Dockerコンテナ内で実行）
-docker run --gpus all --ipc=host --network=host \
-    -v ~/SAM3D-LiDAR-fz:/workspace \
-    -it lidar-llm-mcp:sam3-tested
-
-export PYTHONPATH=/workspace:/workspace/sam3:$PYTHONPATH
-python -m server.multiview.run experiments/omniscient_sample/003 --text "chair"
-
-# 3. クリックプロンプトで追跡・統合
-python -m server.multiview.run experiments/omniscient_sample/003 --click 512,384
-
-# 4. 事前計算されたマスクで統合のみ（SAM 3なしで実行可能）
-python -m server.multiview.run experiments/omniscient_sample/003 --masks output/masks
-```
-
-**オプション:**
-| オプション | 説明 | デフォルト |
-|-----------|------|-----------|
-| `--text`, `-t` | テキストプロンプト（例: "椅子"） | - |
-| `--click`, `-c` | クリック座標（例: 512,384） | - |
-| `--masks`, `-m` | 既存マスクディレクトリ（SAM 3スキップ） | - |
-| `--frame`, `-f` | プロンプトフレーム | 0 |
-| `--step` | フレーム間隔 | 1 |
-| `--voxel` | ボクセルダウンサンプリングサイズ | None |
-| `--max-depth` | 最大深度（メートル） | 10.0 |
-| `--min-depth` | 最小深度（メートル） | 0.1 |
-| `--info` | セッション情報のみ表示 | - |
+3. **タブ3: 実行**
+   - 「点群統合を実行」をクリック
+   - 完了後、PLYファイルをダウンロード
 
 **処理フロー:**
 ```
 Omniscientで撮影（動画+深度+カメラポーズ）
     ↓
-SAM 3でテキスト/クリックプロンプト（1フレーム）
+Web UIでデータを読み込み
+    ↓
+ビデオフレームをクリック or テキストプロンプト入力
     ↓
 SAM 3が全フレームにマスク自動伝播（ビデオトラッキング）
     ↓

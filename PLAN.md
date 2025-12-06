@@ -1242,48 +1242,33 @@ video_path = "recording/video.mp4"
 
 #### 使い方
 
-**統合パイプライン（推奨）:**
+**Web UI（推奨）:**
+
+```bash
+# Web UIを起動
+python -m server.multiview.web_ui --port 7861
+# → ブラウザで http://localhost:7861 にアクセス
+```
+
+**Web UIの手順:**
+1. **タブ1: データソース** - URLからダウンロード or ローカルセッション選択
+2. **タブ2: オブジェクト選択** - ビデオフレームをクリック or テキストプロンプト入力
+3. **タブ3: 実行** - 点群統合を実行、PLYファイルをダウンロード
+
+**CLI（開発・デバッグ用）:**
 
 ```bash
 # セッション情報を確認
 python -m server.multiview.run experiments/omniscient_sample/003 --info
 
-# テキストプロンプトで追跡・統合（Dockerコンテナ内）
-python -m server.multiview.run experiments/omniscient_sample/003 --text "chair"
-
-# クリックプロンプトで追跡・統合
-python -m server.multiview.run experiments/omniscient_sample/003 --click 512,384
-
-# 事前計算マスクで統合のみ（SAM 3なしで実行可能）
-python -m server.multiview.run experiments/omniscient_sample/003 --masks output/masks
-```
-
-**個別モジュールの使用:**
-
-```bash
-# Omniscientデータ読み込みテスト
-python -m server.multiview.omniscient_loader experiments/omniscient_sample/003
-
-# ワールド座標系で点群エクスポート
-python -m server.multiview.omniscient_loader experiments/omniscient_sample/003 \
-    --export-ply --step 10
-
-# Alembicカメラポーズ抽出
-python -m server.multiview.alembic_loader experiments/omniscient_sample/003/003.abc
-
-# SAM 3ビデオトラッキング（Dockerコンテナ内）
-python -m server.multiview.sam3_video_tracker video.mp4 --text "椅子"
-
-# 点群統合のみ
-python -m server.multiview.pointcloud_fusion experiments/omniscient_sample/003 \
-    --masks output/masks -o fused.ply
+# 全点群エクスポート（マスクなし）
+python -m server.multiview.omniscient_loader experiments/omniscient_sample/003 --export-ply
 ```
 
 **Pythonからの使用:**
 
 ```python
 from server.multiview.omniscient_loader import OmniscientLoader
-from server.multiview.pointcloud_fusion import MultiViewPointCloudFusion
 
 # Omniscientデータを読み込み
 loader = OmniscientLoader("experiments/omniscient_sample/003")
