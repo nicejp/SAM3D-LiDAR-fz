@@ -71,11 +71,20 @@ class SessionState:
     total_frames: int = 0
     current_frame: int = 0
     click_point: Optional[Tuple[int, int]] = None
+    click_points: List[Tuple[int, int]] = None  # 複数クリック点
+    click_labels: List[int] = None  # 各点のラベル (1=前景, 0=背景)
     text_prompt: Optional[str] = None
     loader: Any = None
     # SAM 3 state
     sam3_tracker: Any = None
+    sam3_session_video: Optional[str] = None  # 現在のセッションの動画パス
     current_mask: Any = None  # numpy array of current segmentation mask
+
+    def __post_init__(self):
+        if self.click_points is None:
+            self.click_points = []
+        if self.click_labels is None:
+            self.click_labels = []
 
 
 # Global state
@@ -389,9 +398,13 @@ def on_image_click(evt: gr.SelectData, frame_idx: int) -> Tuple[Optional[Image.I
     x, y = evt.index
     state.click_point = (x, y)
     state.current_frame = int(frame_idx)
-    state.current_mask = None  # Reset mask
 
-    info_parts = [f"選択位置: ({x}, {y}) @ フレーム {state.current_frame}"]
+    # クリック点を蓄積（同じフレームの場合のみ）
+    state.click_points.append((x, y))
+    state.click_labels.append(1)  # 1 = 前景
+
+    info_parts = [f"クリック点: {len(state.click_points)}個 @ フレーム {state.current_frame}"]
+    info_parts.append(f"  最新: ({x}, {y})")
 
     # Try to run SAM 3 segmentation
     if HAS_SAM3 and state.video_path:
@@ -400,8 +413,10 @@ def on_image_click(evt: gr.SelectData, frame_idx: int) -> Tuple[Optional[Image.I
             if tracker is not None:
                 info_parts.append("SAM 3 セグメンテーション実行中...")
 
-                # Start session if needed
-                tracker.start_session(state.video_path)
+                # セッション開始（動画が変わった場合のみ）
+                if state.sam3_session_video != state.video_path:
+                    tracker.start_session(state.video_path)
+                    state.sam3_session_video = state.video_path
 
                 # Get image dimensions for coordinate conversion
                 img_width, img_height = 1920, 1080  # default
@@ -409,11 +424,11 @@ def on_image_click(evt: gr.SelectData, frame_idx: int) -> Tuple[Optional[Image.I
                 if temp_frame is not None:
                     img_width, img_height = temp_frame.size
 
-                # Add click prompt and get mask
+                # 全てのクリック点でセグメンテーション
                 result = tracker.add_click_prompt(
                     frame_index=state.current_frame,
-                    point_coords=[(x, y)],
-                    point_labels=[1],  # 1 = foreground
+                    point_coords=state.click_points,
+                    point_labels=state.click_labels,
                     object_id=0,
                     img_width=img_width,
                     img_height=img_height
@@ -441,11 +456,15 @@ def on_image_click(evt: gr.SelectData, frame_idx: int) -> Tuple[Optional[Image.I
     if image is not None and state.current_mask is not None:
         image = apply_mask_overlay(image, state.current_mask, color=(255, 50, 50), alpha=0.5)
 
-        # Draw click point on top
+    # Draw all click points on top
+    if image is not None:
         draw = ImageDraw.Draw(image)
-        radius = 15
-        draw.ellipse([x-radius, y-radius, x+radius, y+radius], outline='lime', width=3)
-        draw.ellipse([x-3, y-3, x+3, y+3], fill='lime')
+        for i, (px, py) in enumerate(state.click_points):
+            label = state.click_labels[i]
+            color = 'lime' if label == 1 else 'red'
+            radius = 15
+            draw.ellipse([px-radius, py-radius, px+radius, py+radius], outline=color, width=3)
+            draw.ellipse([px-3, py-3, px+3, py+3], fill=color)
 
     info = "\n".join(info_parts)
     return image, info
@@ -455,9 +474,12 @@ def clear_selection() -> Tuple[Optional[Image.Image], str]:
     """Clear click selection and mask"""
     global state
     state.click_point = None
+    state.click_points = []
+    state.click_labels = []
     state.current_mask = None
+    state.sam3_session_video = None  # 次回セッション再開始
     image = get_video_frame(state.current_frame)
-    return image, "選択をクリアしました"
+    return image, "選択をクリアしました（クリック点: 0個）"
 
 
 def run_text_segmentation(text_prompt: str, frame_idx: int) -> Tuple[Optional[Image.Image], str]:
