@@ -125,16 +125,20 @@ class SAM3VideoTracker:
         frame_index: int,
         point_coords: List[Tuple[int, int]],
         point_labels: Optional[List[int]] = None,
-        object_id: int = 0
+        object_id: int = 0,
+        img_width: int = 1920,
+        img_height: int = 1080
     ) -> Dict:
         """
         クリックプロンプトを追加
 
         Args:
             frame_index: 対象フレーム
-            point_coords: クリック座標 [(x, y), ...]
+            point_coords: クリック座標 [(x, y), ...] (絶対座標)
             point_labels: 各座標のラベル (1=前景, 0=背景)
             object_id: オブジェクトID
+            img_width: 画像の幅（相対座標変換用）
+            img_height: 画像の高さ（相対座標変換用）
 
         Returns:
             初期フレームのセグメント結果
@@ -145,30 +149,47 @@ class SAM3VideoTracker:
         if point_labels is None:
             point_labels = [1] * len(point_coords)
 
-        # ポイント座標を[[x, y], ...]形式に変換
-        points = [[float(x), float(y)] for x, y in point_coords]
+        # 絶対座標を相対座標（0-1の範囲）に変換
+        points_rel = [[x / img_width, y / img_height] for x, y in point_coords]
 
-        # プロンプトを追加 (新API)
-        result = self.predictor.add_prompt(
-            session_id=self._session_id,
-            frame_idx=frame_index,
-            points=points,
-            point_labels=point_labels,
-            obj_id=object_id
+        # テンソルに変換
+        points_tensor = torch.tensor(points_rel, dtype=torch.float32)
+        labels_tensor = torch.tensor(point_labels, dtype=torch.int32)
+
+        # handle_requestを使用（新API）
+        response = self.predictor.handle_request(
+            request=dict(
+                type="add_prompt",
+                session_id=self._session_id,
+                frame_index=frame_index,
+                points=points_tensor,
+                point_labels=labels_tensor,
+                obj_id=object_id,
+            )
         )
 
         # 結果からマスクを取得
         mask = None
-        if result and "mask" in result:
-            mask = result["mask"]
-        elif result and "masks" in result:
-            mask = result["masks"][0] if len(result["masks"]) > 0 else None
+        if response and "outputs" in response:
+            outputs = response["outputs"]
+            if isinstance(outputs, dict):
+                # obj_idに対応するマスクを取得
+                if object_id in outputs:
+                    mask = outputs[object_id].get("mask")
+                    if mask is not None and hasattr(mask, 'cpu'):
+                        mask = mask.cpu().numpy()
+                # または最初のマスクを取得
+                elif len(outputs) > 0:
+                    first_key = list(outputs.keys())[0]
+                    mask = outputs[first_key].get("mask")
+                    if mask is not None and hasattr(mask, 'cpu'):
+                        mask = mask.cpu().numpy()
 
         return {
             "frame_index": frame_index,
             "object_id": object_id,
             "mask": mask,
-            "raw_result": result
+            "raw_result": response
         }
 
     def add_text_prompt(

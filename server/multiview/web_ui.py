@@ -403,12 +403,20 @@ def on_image_click(evt: gr.SelectData, frame_idx: int) -> Tuple[Optional[Image.I
                 # Start session if needed
                 tracker.start_session(state.video_path)
 
+                # Get image dimensions for coordinate conversion
+                img_width, img_height = 1920, 1080  # default
+                temp_frame = get_video_frame(state.current_frame)
+                if temp_frame is not None:
+                    img_width, img_height = temp_frame.size
+
                 # Add click prompt and get mask
                 result = tracker.add_click_prompt(
                     frame_index=state.current_frame,
                     point_coords=[(x, y)],
                     point_labels=[1],  # 1 = foreground
-                    object_id=0
+                    object_id=0,
+                    img_width=img_width,
+                    img_height=img_height
                 )
 
                 state.current_mask = result.get("mask")
