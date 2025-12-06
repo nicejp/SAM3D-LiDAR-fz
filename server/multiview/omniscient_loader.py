@@ -35,6 +35,14 @@ try:
 except ImportError:
     pass
 
+# 統合カメラローダー（USD対応）
+HAS_CAMERA_LOADER = False
+try:
+    from server.multiview.camera_loader import CameraLoader, load_camera_poses
+    HAS_CAMERA_LOADER = True
+except ImportError:
+    pass
+
 
 @dataclass
 class CameraIntrinsics:
@@ -119,6 +127,26 @@ class OmniscientLoader:
         return self.session_path / f"{self.session_name}.abc"
 
     @property
+    def usd_path(self) -> Optional[Path]:
+        """USDカメラポーズファイルパス（存在する場合）"""
+        for ext in ['.usda', '.usd', '.usdc']:
+            path = self.session_path / f"{self.session_name}{ext}"
+            if path.exists():
+                return path
+        return None
+
+    @property
+    def camera_pose_path(self) -> Optional[Path]:
+        """カメラポーズファイルパス（USD優先、ABCフォールバック）"""
+        # USD形式を優先（ARM64でも動作する）
+        if self.usd_path:
+            return self.usd_path
+        # Alembic形式
+        if self.abc_path.exists():
+            return self.abc_path
+        return None
+
+    @property
     def depth_dir(self) -> Path:
         return self.session_path / f"{self.session_name}_depth"
 
@@ -170,14 +198,24 @@ class OmniscientLoader:
         return self.metadata.get("data", {}).get("camera", {}).get("frames", [])
 
     @property
-    def camera_loader(self) -> Optional['AlembicCameraLoader']:
-        """Alembicカメラローダー（遅延初期化）"""
-        if self._camera_loader is None and HAS_ALEMBIC_LOADER:
-            if self.abc_path.exists():
+    def camera_loader(self):
+        """カメラローダー（USD優先、Alembicフォールバック）"""
+        if self._camera_loader is None:
+            pose_path = self.camera_pose_path
+            if pose_path:
                 try:
-                    self._camera_loader = AlembicCameraLoader(str(self.abc_path))
+                    # 統合CameraLoaderを優先（USD対応）
+                    if HAS_CAMERA_LOADER:
+                        self._camera_loader = CameraLoader(str(pose_path))
+                        if self._camera_loader.num_frames > 0:
+                            print(f"Loaded camera poses from: {pose_path}")
+                        else:
+                            self._camera_loader = None
+                    # フォールバック: AlembicCameraLoader
+                    elif HAS_ALEMBIC_LOADER and pose_path.suffix == '.abc':
+                        self._camera_loader = AlembicCameraLoader(str(pose_path))
                 except Exception as e:
-                    print(f"Warning: Failed to load Alembic camera poses: {e}")
+                    print(f"Warning: Failed to load camera poses: {e}")
         return self._camera_loader
 
     @property
