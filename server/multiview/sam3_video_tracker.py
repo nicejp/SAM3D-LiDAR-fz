@@ -214,8 +214,8 @@ class SAM3VideoTracker:
         if point_labels is None:
             point_labels = [1] * len(point_coords)
 
-        # 特徴キャッシュを構築（必須）
-        self._build_cache_for_frame(frame_index)
+        # 注: SAM 3は内部でキャッシュを管理するため、事前のキャッシュ構築は不要
+        # _build_cache_for_frame() を呼ぶと逆にキャッシュの不整合が発生する
 
         # 座標形式: 正規化座標 (0-1の範囲) を試す
         # (x, y) -> (x/width, y/height)
@@ -322,9 +322,8 @@ class SAM3VideoTracker:
         if self._session_id is None:
             raise RuntimeError("Session not started. Call start_session() first.")
 
-        # 特定フレームが指定された場合、特徴キャッシュを構築（クリックプロンプトと同様）
-        if frame_index >= 0:
-            self._build_cache_for_frame(frame_index)
+        # 注: SAM 3は内部でキャッシュを管理するため、事前のキャッシュ構築は不要
+        # _build_cache_for_frame() を呼ぶと逆にキャッシュの不整合が発生する
 
         print(f"Adding text prompt: frame={frame_index}, text=\"{text}\"")
 
@@ -411,10 +410,8 @@ class SAM3VideoTracker:
         if self._session_id is None:
             raise RuntimeError("Session not started. Call start_session() first.")
 
-        # キャッシュが構築されていない場合、開始フレームまでキャッシュを構築
-        if self._cache_built_frame < start_frame:
-            print(f"Building cache to start_frame {start_frame} before propagation...")
-            self._build_cache_for_frame(start_frame)
+        # 注: SAM 3は内部でキャッシュを管理するため、事前のキャッシュ構築は不要
+        # プロンプト追加後に自動的にキャッシュが構築される
 
         results = []
 
