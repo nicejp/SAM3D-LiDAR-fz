@@ -16,6 +16,9 @@ import os
 import sys
 import json
 import argparse
+import subprocess
+import tempfile
+import shutil
 from pathlib import Path
 from typing import List, Dict, Optional, Tuple
 import numpy as np
@@ -29,6 +32,205 @@ try:
 except ImportError:
     pass
 
+# Blenderの実行ファイルパス
+BLENDER_PATH = shutil.which("blender")
+
+
+def _create_blender_script(abc_path: str, output_json_path: str) -> str:
+    """Blenderで実行するPythonスクリプトを生成"""
+    return f'''
+import bpy
+import json
+import sys
+
+abc_path = r"{abc_path}"
+output_path = r"{output_json_path}"
+
+# 新しいBlenderシーンを作成
+bpy.ops.wm.read_factory_settings(use_empty=True)
+
+# Alembicをインポート
+print(f"Loading Alembic: {{abc_path}}", file=sys.stderr)
+bpy.ops.wm.alembic_import(filepath=abc_path)
+
+# カメラオブジェクトを検索
+camera = None
+for obj in bpy.data.objects:
+    if obj.type == 'CAMERA':
+        camera = obj
+        print(f"Found camera: {{obj.name}}", file=sys.stderr)
+        break
+
+if camera is None:
+    # カメラがない場合、他のオブジェクトを探す
+    print("Objects in scene:", file=sys.stderr)
+    for obj in bpy.data.objects:
+        print(f"  {{obj.name}} (type: {{obj.type}})", file=sys.stderr)
+    result = {{"error": "No camera found in Alembic file", "poses": []}}
+    with open(output_path, 'w') as f:
+        json.dump(result, f)
+    sys.exit(0)
+
+# フレーム範囲を取得
+scene = bpy.context.scene
+start_frame = scene.frame_start
+end_frame = scene.frame_end
+
+# Alembicのフレーム範囲を検出
+if camera.animation_data and camera.animation_data.action:
+    action = camera.animation_data.action
+    start_frame = int(action.frame_range[0])
+    end_frame = int(action.frame_range[1])
+else:
+    end_frame = 500  # 最大500フレームまで探索
+
+print(f"Frame range: {{start_frame}} - {{end_frame}}", file=sys.stderr)
+
+poses = []
+
+for frame in range(start_frame, end_frame + 1):
+    scene.frame_set(frame)
+
+    # depsgraphを更新
+    depsgraph = bpy.context.evaluated_depsgraph_get()
+    camera_eval = camera.evaluated_get(depsgraph)
+
+    # ワールド変換行列を取得
+    world_matrix = camera_eval.matrix_world.copy()
+
+    # 4x4行列をリストに変換
+    matrix_list = [list(row) for row in world_matrix]
+
+    # 位置を抽出
+    location = world_matrix.translation.copy()
+
+    # 回転を抽出（オイラー角）
+    rotation = world_matrix.to_euler()
+
+    pose = {{
+        "frame": frame,
+        "matrix_world": matrix_list,
+        "location": {{
+            "x": location.x,
+            "y": location.y,
+            "z": location.z
+        }},
+        "rotation_euler": {{
+            "x": rotation.x,
+            "y": rotation.y,
+            "z": rotation.z,
+            "order": rotation.order
+        }}
+    }}
+    poses.append(pose)
+
+    if frame % 100 == 0:
+        print(f"  Frame {{frame}}: pos=({{location.x:.3f}}, {{location.y:.3f}}, {{location.z:.3f}})", file=sys.stderr)
+
+# 同じ行列が続く場合は終端を検出
+valid_poses = []
+last_matrix = None
+repeated_count = 0
+
+for pose in poses:
+    current_matrix = tuple(tuple(row) for row in pose["matrix_world"])
+
+    if last_matrix is not None and current_matrix == last_matrix:
+        repeated_count += 1
+        if repeated_count > 10:
+            break
+    else:
+        repeated_count = 0
+
+    valid_poses.append(pose)
+    last_matrix = current_matrix
+
+print(f"Valid frames: {{len(valid_poses)}}", file=sys.stderr)
+
+# JSON出力
+result = {{
+    "abc_file": abc_path,
+    "num_frames": len(valid_poses),
+    "poses": valid_poses
+}}
+with open(output_path, 'w') as f:
+    json.dump(result, f, indent=2)
+
+print(f"Saved to: {{output_path}}", file=sys.stderr)
+'''
+
+
+def load_alembic_camera_poses_subprocess(abc_path: str) -> List[Dict]:
+    """
+    Blender subprocessを使用してAlembicファイルからカメラポーズを抽出
+
+    Args:
+        abc_path: Alembicファイルパス
+
+    Returns:
+        カメラポーズのリスト
+    """
+    if BLENDER_PATH is None:
+        print("Warning: Blender is not installed. Camera poses will not be available.")
+        print("         Run: apt-get install blender")
+        return []
+
+    abc_path = str(Path(abc_path).absolute())
+
+    # 一時ファイルを作成
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as script_file:
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as json_file:
+            script_path = script_file.name
+            json_path = json_file.name
+
+    try:
+        # Blenderスクリプトを書き込み
+        script_content = _create_blender_script(abc_path, json_path)
+        with open(script_path, 'w') as f:
+            f.write(script_content)
+
+        # Blenderをバックグラウンドで実行
+        print(f"Loading Alembic via Blender: {abc_path}")
+        result = subprocess.run(
+            [BLENDER_PATH, '--background', '--python', script_path],
+            capture_output=True,
+            text=True,
+            timeout=120
+        )
+
+        # stderrに進捗が出力される
+        if result.stderr:
+            for line in result.stderr.split('\n'):
+                if line.strip() and not line.startswith('Blender'):
+                    print(line)
+
+        # JSONを読み込み
+        if os.path.exists(json_path):
+            with open(json_path, 'r') as f:
+                data = json.load(f)
+
+            if "error" in data:
+                print(f"Warning: {data['error']}")
+                return []
+
+            return data.get("poses", [])
+        else:
+            print("Warning: Blender output not found")
+            return []
+
+    except subprocess.TimeoutExpired:
+        print("Warning: Blender process timed out")
+        return []
+    except Exception as e:
+        print(f"Warning: Failed to load Alembic via Blender: {e}")
+        return []
+    finally:
+        # 一時ファイルを削除
+        if os.path.exists(script_path):
+            os.unlink(script_path)
+        if os.path.exists(json_path):
+            os.unlink(json_path)
+
 
 def load_alembic_camera_poses(abc_path: str, output_json: Optional[str] = None) -> List[Dict]:
     """
@@ -41,11 +243,22 @@ def load_alembic_camera_poses(abc_path: str, output_json: Optional[str] = None) 
     Returns:
         カメラポーズのリスト（各フレームの変換行列を含む）
     """
+    # bpyが直接使えない場合はsubprocessを使用
     if not HAS_BPY:
-        print("Warning: bpy (Blender Python) is not installed. Camera poses will not be available.")
-        print("         Run: pip install bpy")
-        return []  # 空のリストを返す（エラーではなく警告）
+        poses = load_alembic_camera_poses_subprocess(abc_path)
 
+        if output_json and poses:
+            with open(output_json, 'w') as f:
+                json.dump({
+                    "abc_file": str(abc_path),
+                    "num_frames": len(poses),
+                    "poses": poses
+                }, f, indent=2)
+            print(f"Saved to: {output_json}")
+
+        return poses
+
+    # bpyが使える場合は直接使用
     abc_path = Path(abc_path)
     if not abc_path.exists():
         raise FileNotFoundError(f"Alembic file not found: {abc_path}")
@@ -320,9 +533,9 @@ def main():
 
     args = parser.parse_args()
 
-    if not HAS_BPY:
-        print("Error: bpy (Blender Python) is not installed.")
-        print("Install with: pip install bpy")
+    if not HAS_BPY and BLENDER_PATH is None:
+        print("Error: Neither bpy nor Blender is available.")
+        print("Install Blender with: apt-get install blender")
         sys.exit(1)
 
     # ポーズを読み込み
@@ -331,6 +544,10 @@ def main():
     print(f"=== Alembic Camera Poses ===")
     print(f"File: {args.abc_file}")
     print(f"Frames: {loader.num_frames}")
+
+    if loader.num_frames == 0:
+        print("No camera poses found.")
+        sys.exit(1)
 
     if args.frame is not None:
         print(f"\n=== Frame {args.frame} ===")
