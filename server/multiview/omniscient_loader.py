@@ -186,6 +186,23 @@ class OmniscientLoader:
         return self._depth_files
 
     @property
+    def depth_frame_map(self) -> Dict[int, Path]:
+        """ビデオフレーム番号→深度ファイルのマッピング"""
+        if not hasattr(self, '_depth_frame_map') or self._depth_frame_map is None:
+            self._depth_frame_map = {}
+            for depth_file in self.depth_files:
+                # ファイル名からフレーム番号を抽出: depth_000123.png → 123
+                name = depth_file.stem
+                parts = name.split('_')
+                if len(parts) >= 2:
+                    try:
+                        frame_num = int(parts[-1])
+                        self._depth_frame_map[frame_num] = depth_file
+                    except ValueError:
+                        pass
+        return self._depth_frame_map
+
+    @property
     def confidence_files(self) -> List[Path]:
         """深度信頼度ファイルリスト（ソート済み）"""
         if self._confidence_files is None:
@@ -268,15 +285,23 @@ class OmniscientLoader:
         深度画像を読み込み
 
         Args:
-            frame_index: フレームインデックス
+            frame_index: ビデオフレーム番号
 
         Returns:
             depth_map: 深度マップ (H, W)、単位はメートル
         """
-        if frame_index >= len(self.depth_files):
-            raise IndexError(f"Frame index {frame_index} out of range (max: {len(self.depth_files)-1})")
+        # フレーム番号から深度ファイルを取得
+        if frame_index in self.depth_frame_map:
+            depth_path = self.depth_frame_map[frame_index]
+        else:
+            # 最も近いフレームを探す
+            available_frames = sorted(self.depth_frame_map.keys())
+            if not available_frames:
+                raise IndexError("No depth files available")
+            closest_frame = min(available_frames, key=lambda f: abs(f - frame_index))
+            depth_path = self.depth_frame_map[closest_frame]
+            print(f"  Depth: frame {frame_index} not found, using closest frame {closest_frame}")
 
-        depth_path = self.depth_files[frame_index]
         depth_img = Image.open(depth_path)
         depth_arr = np.array(depth_img, dtype=np.float32)
 
