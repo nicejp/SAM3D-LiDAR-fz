@@ -1245,10 +1245,15 @@ video_path = "recording/video.mp4"
 **Web UI（推奨）:**
 
 ```bash
-# Web UIを起動
+# 事前準備: OpenCVをインストール（ビデオ表示に必要）
+pip install opencv-python-headless
+
+# Web UIを起動（注意: .py は付けない）
 python -m server.multiview.web_ui --port 7861
 # → ブラウザで http://localhost:7861 にアクセス
 ```
+
+**注意:** Dockerコンテナを再起動した場合、OpenCVを再インストールする必要があります。
 
 **Web UIの手順:**
 1. **タブ1: データソース** - URLからダウンロード or ローカルセッション選択

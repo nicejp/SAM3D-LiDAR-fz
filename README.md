@@ -345,10 +345,15 @@ python3 -m server.fusion.auto_fuse \
 **Web UIの起動:**
 
 ```bash
-# Web UIを起動
+# 事前準備: OpenCVをインストール（ビデオ表示に必要）
+pip install opencv-python-headless
+
+# Web UIを起動（注意: .py は付けない）
 python -m server.multiview.web_ui --port 7861
 # → ブラウザで http://localhost:7861 にアクセス
 ```
+
+**注意:** Dockerコンテナを再起動した場合、OpenCVを再インストールする必要があります。
 
 **Web UIの使い方:**
 
