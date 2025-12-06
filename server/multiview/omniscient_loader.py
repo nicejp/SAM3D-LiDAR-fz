@@ -254,6 +254,36 @@ class OmniscientLoader:
             return self.camera_loader.max_frame
         return self.num_camera_poses
 
+    def video_frame_to_camera_frame(self, video_frame: int) -> int:
+        """
+        ビデオフレーム番号をカメラポーズフレーム番号に変換
+
+        ビデオとカメラポーズのフレームレートが異なる場合にスケーリング
+        （例: 60fps動画 → 30fps カメラポーズ）
+
+        Args:
+            video_frame: ビデオフレーム番号
+
+        Returns:
+            対応するカメラポーズのフレーム番号
+        """
+        if not self.has_camera_poses or self.num_depth_frames == 0:
+            return video_frame
+
+        # カメラポーズと深度フレームの比率を計算
+        # 例: 182 poses / 426 depth frames = 0.427
+        ratio = self.num_camera_poses / self.num_depth_frames
+
+        # スケーリングが必要かどうか判定（差が10%以上の場合）
+        if ratio < 0.9 or ratio > 1.1:
+            # ビデオフレームをカメラフレームにスケーリング
+            camera_frame = int(video_frame * ratio)
+            # 最大フレーム番号を超えないように制限
+            camera_frame = min(camera_frame, self.max_camera_frame)
+            return camera_frame
+
+        return video_frame
+
     def get_intrinsics(self, frame_index: int = 0) -> CameraIntrinsics:
         """カメラ内部パラメータを取得"""
         # 深度画像のサイズを取得
@@ -462,7 +492,7 @@ class OmniscientLoader:
         Args:
             depth_map: 深度マップ (H, W)、メートル単位
             intrinsics: カメラ内部パラメータ
-            frame_index: フレームインデックス（カメラポーズ用）
+            frame_index: ビデオフレームインデックス（カメラポーズ用）
             max_depth: 最大深度（メートル）
             min_depth: 最小深度（メートル）
 
@@ -476,9 +506,10 @@ class OmniscientLoader:
             return points_camera
 
         # カメラポーズが利用可能な場合、ワールド座標に変換
-        # get_transformは最も近いフレームを使用するので、範囲チェックは不要
         if self.has_camera_poses:
-            camera_matrix = self.camera_loader.get_transform(frame_index)
+            # ビデオフレームをカメラフレームにスケーリング
+            camera_frame = self.video_frame_to_camera_frame(frame_index)
+            camera_matrix = self.camera_loader.get_transform(camera_frame)
             points_world = transform_points_to_world(points_camera, camera_matrix, flip_yz=True)
             return points_world
 
@@ -486,30 +517,32 @@ class OmniscientLoader:
 
     def get_camera_transform(self, frame_index: int) -> Optional[np.ndarray]:
         """
-        特定フレームのカメラ変換行列を取得
+        特定ビデオフレームのカメラ変換行列を取得
 
         Args:
-            frame_index: フレームインデックス
+            frame_index: ビデオフレームインデックス
 
         Returns:
             4x4 変換行列、または None
         """
         if self.has_camera_poses:
-            return self.camera_loader.get_transform(frame_index)
+            camera_frame = self.video_frame_to_camera_frame(frame_index)
+            return self.camera_loader.get_transform(camera_frame)
         return None
 
     def get_camera_position(self, frame_index: int) -> Optional[np.ndarray]:
         """
-        特定フレームのカメラ位置を取得
+        特定ビデオフレームのカメラ位置を取得
 
         Args:
-            frame_index: フレームインデックス
+            frame_index: ビデオフレームインデックス
 
         Returns:
             (3,) 位置ベクトル、または None
         """
         if self.has_camera_poses:
-            return self.camera_loader.get_position(frame_index)
+            camera_frame = self.video_frame_to_camera_frame(frame_index)
+            return self.camera_loader.get_position(camera_frame)
         return None
 
     def get_mesh_path(self) -> Optional[Path]:
@@ -528,9 +561,14 @@ class OmniscientLoader:
         }
         if self.has_camera_poses and self.num_camera_poses > 0:
             first_pos = self.get_camera_position(0)
-            last_pos = self.get_camera_position(self.num_camera_poses - 1)
+            last_pos = self.get_camera_position(self.num_depth_frames - 1)
             camera_poses_info["first_position"] = first_pos.tolist() if first_pos is not None else None
             camera_poses_info["last_position"] = last_pos.tolist() if last_pos is not None else None
+            # フレームレート比率
+            if self.num_depth_frames > 0:
+                ratio = self.num_camera_poses / self.num_depth_frames
+                camera_poses_info["frame_ratio"] = ratio
+                camera_poses_info["scaling_enabled"] = ratio < 0.9 or ratio > 1.1
 
         return {
             "session_name": self.session_name,
