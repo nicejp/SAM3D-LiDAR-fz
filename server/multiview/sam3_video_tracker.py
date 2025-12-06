@@ -114,8 +114,9 @@ class SAM3VideoTracker:
         self._video_path = str(video_path)
         print(f"Starting session with: {self._video_path}")
 
-        # セッションを開始 (新API)
-        self._session_id = self.predictor.start_session(self._video_path)
+        # セッションを開始 (新API - 辞書を返すのでsession_idを抽出)
+        result = self.predictor.start_session(self._video_path)
+        self._session_id = result['session_id']
 
         return self._session_id
 
