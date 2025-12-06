@@ -150,7 +150,14 @@ class MultiViewPointCloudFusion:
         use_world_coords: bool = True,
         max_depth: float = 10.0,
         min_depth: float = 0.1,
-        voxel_downsample: Optional[float] = None
+        voxel_downsample: Optional[float] = None,
+        smooth: bool = False,
+        statistical_outlier_removal: bool = False,
+        sor_neighbors: int = 20,
+        sor_std_ratio: float = 2.0,
+        radius_outlier_removal: bool = False,
+        ror_radius: float = 0.05,
+        ror_min_neighbors: int = 5
     ) -> FusedPointCloud:
         """
         複数フレームの点群を統合
@@ -162,6 +169,13 @@ class MultiViewPointCloudFusion:
             max_depth: 最大深度
             min_depth: 最小深度
             voxel_downsample: ボクセルダウンサンプリングのサイズ（Noneで無効）
+            smooth: Trueの場合、ボクセル内の点を平均化して滑らかにする
+            statistical_outlier_removal: 統計的外れ値除去を有効化
+            sor_neighbors: 統計的外れ値除去の近傍点数
+            sor_std_ratio: 統計的外れ値除去の標準偏差倍率
+            radius_outlier_removal: 半径フィルタリングを有効化
+            ror_radius: 半径フィルタリングの検索半径
+            ror_min_neighbors: 半径フィルタリングの最小近傍点数
 
         Returns:
             FusedPointCloud: 統合された点群
@@ -207,17 +221,42 @@ class MultiViewPointCloudFusion:
         merged_colors = np.vstack(all_colors) if all_colors else None
         merged_frame_indices = np.concatenate(all_frame_indices)
 
-        print(f"Total before downsampling: {len(merged_points)} points")
+        print(f"Total before processing: {len(merged_points)} points")
 
-        # ボクセルダウンサンプリング
+        # ボクセルダウンサンプリング（平均化オプション付き）
         if voxel_downsample is not None and voxel_downsample > 0:
-            merged_points, keep_indices = self._voxel_downsample(
-                merged_points, voxel_downsample
+            merged_points, keep_indices, merged_colors = self._voxel_downsample(
+                merged_points, voxel_downsample,
+                colors=merged_colors,
+                average=smooth
             )
-            if merged_colors is not None:
-                merged_colors = merged_colors[keep_indices]
             merged_frame_indices = merged_frame_indices[keep_indices]
-            print(f"After downsampling (voxel={voxel_downsample}): {len(merged_points)} points")
+            mode = "averaging" if smooth else "first point"
+            print(f"After voxel downsampling ({mode}, size={voxel_downsample}): {len(merged_points)} points")
+
+        # 統計的外れ値除去
+        if statistical_outlier_removal:
+            merged_points, keep_mask, merged_colors = self._statistical_outlier_removal(
+                merged_points,
+                colors=merged_colors,
+                nb_neighbors=sor_neighbors,
+                std_ratio=sor_std_ratio
+            )
+            merged_frame_indices = merged_frame_indices[keep_mask]
+            removed = (~keep_mask).sum() if isinstance(keep_mask, np.ndarray) else 0
+            print(f"After statistical outlier removal (k={sor_neighbors}, std={sor_std_ratio}): {len(merged_points)} points (removed {removed})")
+
+        # 半径フィルタリング
+        if radius_outlier_removal:
+            merged_points, keep_mask, merged_colors = self._radius_outlier_removal(
+                merged_points,
+                colors=merged_colors,
+                radius=ror_radius,
+                min_neighbors=ror_min_neighbors
+            )
+            merged_frame_indices = merged_frame_indices[keep_mask]
+            removed = (~keep_mask).sum() if isinstance(keep_mask, np.ndarray) else 0
+            print(f"After radius outlier removal (r={ror_radius}, min={ror_min_neighbors}): {len(merged_points)} points (removed {removed})")
 
         return FusedPointCloud(
             points=merged_points,
@@ -228,18 +267,23 @@ class MultiViewPointCloudFusion:
     def _voxel_downsample(
         self,
         points: np.ndarray,
-        voxel_size: float
-    ) -> Tuple[np.ndarray, np.ndarray]:
+        voxel_size: float,
+        colors: Optional[np.ndarray] = None,
+        average: bool = True
+    ) -> Tuple[np.ndarray, np.ndarray, Optional[np.ndarray]]:
         """
         ボクセルダウンサンプリング
 
         Args:
             points: (N, 3) 点群
             voxel_size: ボクセルサイズ
+            colors: (N, 3) 色（オプション）
+            average: Trueの場合、ボクセル内の点を平均化。Falseの場合は最初の点を選択
 
         Returns:
             downsampled_points: ダウンサンプリングされた点群
-            keep_indices: 保持されたインデックス
+            keep_indices: 保持されたインデックス（averageがFalseの場合のみ有効）
+            downsampled_colors: ダウンサンプリングされた色（colorsがある場合）
         """
         # ボクセルインデックスを計算
         voxel_indices = np.floor(points / voxel_size).astype(np.int32)
@@ -249,14 +293,110 @@ class MultiViewPointCloudFusion:
             voxel_indices, axis=0, return_inverse=True
         )
 
-        # 各ボクセルから1点を選択（最初の点）
-        keep_indices = []
-        for i in range(len(unique_voxels)):
-            first_idx = np.where(inverse_indices == i)[0][0]
-            keep_indices.append(first_idx)
+        if average:
+            # ボクセル内の点を平均化（層状の点群を滑らかに）
+            downsampled_points = np.zeros((len(unique_voxels), 3))
+            downsampled_colors = np.zeros((len(unique_voxels), 3)) if colors is not None else None
+            keep_indices = []
 
-        keep_indices = np.array(keep_indices)
-        return points[keep_indices], keep_indices
+            for i in range(len(unique_voxels)):
+                mask = inverse_indices == i
+                downsampled_points[i] = points[mask].mean(axis=0)
+                if colors is not None:
+                    downsampled_colors[i] = colors[mask].mean(axis=0)
+                # 最初のインデックスを記録（frame_indices用）
+                keep_indices.append(np.where(mask)[0][0])
+
+            keep_indices = np.array(keep_indices)
+            return downsampled_points, keep_indices, downsampled_colors
+        else:
+            # 各ボクセルから1点を選択（最初の点）
+            keep_indices = []
+            for i in range(len(unique_voxels)):
+                first_idx = np.where(inverse_indices == i)[0][0]
+                keep_indices.append(first_idx)
+
+            keep_indices = np.array(keep_indices)
+            downsampled_colors = colors[keep_indices] if colors is not None else None
+            return points[keep_indices], keep_indices, downsampled_colors
+
+    def _statistical_outlier_removal(
+        self,
+        points: np.ndarray,
+        colors: Optional[np.ndarray] = None,
+        nb_neighbors: int = 20,
+        std_ratio: float = 2.0
+    ) -> Tuple[np.ndarray, np.ndarray, Optional[np.ndarray]]:
+        """
+        統計的外れ値除去
+
+        各点について、k近傍点との平均距離を計算し、
+        平均距離が全体の平均 + std_ratio * 標準偏差を超える点を除去
+
+        Args:
+            points: (N, 3) 点群
+            colors: (N, 3) 色（オプション）
+            nb_neighbors: 近傍点数
+            std_ratio: 標準偏差の倍率
+
+        Returns:
+            filtered_points: フィルタリングされた点群
+            keep_mask: 保持された点のマスク
+            filtered_colors: フィルタリングされた色
+        """
+        from scipy.spatial import cKDTree
+
+        if len(points) < nb_neighbors + 1:
+            return points, np.ones(len(points), dtype=bool), colors
+
+        tree = cKDTree(points)
+        distances, _ = tree.query(points, k=nb_neighbors + 1)  # 自分自身を含む
+        mean_distances = distances[:, 1:].mean(axis=1)  # 自分自身を除く
+
+        threshold = mean_distances.mean() + std_ratio * mean_distances.std()
+        keep_mask = mean_distances < threshold
+
+        filtered_colors = colors[keep_mask] if colors is not None else None
+        return points[keep_mask], keep_mask, filtered_colors
+
+    def _radius_outlier_removal(
+        self,
+        points: np.ndarray,
+        colors: Optional[np.ndarray] = None,
+        radius: float = 0.05,
+        min_neighbors: int = 5
+    ) -> Tuple[np.ndarray, np.ndarray, Optional[np.ndarray]]:
+        """
+        半径フィルタリングによる外れ値除去
+
+        指定半径内に最小点数以上の近傍点がない点を除去
+
+        Args:
+            points: (N, 3) 点群
+            colors: (N, 3) 色（オプション）
+            radius: 検索半径
+            min_neighbors: 最小近傍点数
+
+        Returns:
+            filtered_points: フィルタリングされた点群
+            keep_mask: 保持された点のマスク
+            filtered_colors: フィルタリングされた色
+        """
+        from scipy.spatial import cKDTree
+
+        if len(points) < min_neighbors + 1:
+            return points, np.ones(len(points), dtype=bool), colors
+
+        tree = cKDTree(points)
+        neighbor_counts = np.array([
+            len(tree.query_ball_point(p, radius)) - 1  # 自分自身を除く
+            for p in points
+        ])
+
+        keep_mask = neighbor_counts >= min_neighbors
+
+        filtered_colors = colors[keep_mask] if colors is not None else None
+        return points[keep_mask], keep_mask, filtered_colors
 
     def get_object_ids_from_masks(self, mask_dir: str) -> List[int]:
         """
@@ -289,7 +429,14 @@ class MultiViewPointCloudFusion:
         max_depth: float = 10.0,
         min_depth: float = 0.1,
         voxel_downsample: Optional[float] = None,
-        object_id: Optional[int] = None
+        object_id: Optional[int] = None,
+        smooth: bool = False,
+        statistical_outlier_removal: bool = False,
+        sor_neighbors: int = 20,
+        sor_std_ratio: float = 2.0,
+        radius_outlier_removal: bool = False,
+        ror_radius: float = 0.05,
+        ror_min_neighbors: int = 5
     ) -> FusedPointCloud:
         """
         マスクディレクトリから点群を統合
@@ -302,6 +449,13 @@ class MultiViewPointCloudFusion:
             min_depth: 最小深度
             voxel_downsample: ボクセルダウンサンプリングのサイズ
             object_id: 特定のオブジェクトIDのみを使用（None=全オブジェクト）
+            smooth: ボクセル内の点を平均化して表面を滑らかにする
+            statistical_outlier_removal: 統計的外れ値除去を有効化
+            sor_neighbors: 統計的外れ値除去の近傍点数
+            sor_std_ratio: 統計的外れ値除去の標準偏差倍率
+            radius_outlier_removal: 半径フィルタリングを有効化
+            ror_radius: 半径フィルタリングの検索半径
+            ror_min_neighbors: 半径フィルタリングの最小近傍点数
 
         Returns:
             FusedPointCloud: 統合された点群
@@ -349,7 +503,14 @@ class MultiViewPointCloudFusion:
             use_world_coords=use_world_coords,
             max_depth=max_depth,
             min_depth=min_depth,
-            voxel_downsample=voxel_downsample
+            voxel_downsample=voxel_downsample,
+            smooth=smooth,
+            statistical_outlier_removal=statistical_outlier_removal,
+            sor_neighbors=sor_neighbors,
+            sor_std_ratio=sor_std_ratio,
+            radius_outlier_removal=radius_outlier_removal,
+            ror_radius=ror_radius,
+            ror_min_neighbors=ror_min_neighbors
         )
 
     def fuse_all_objects(
@@ -359,7 +520,14 @@ class MultiViewPointCloudFusion:
         use_world_coords: bool = True,
         max_depth: float = 10.0,
         min_depth: float = 0.1,
-        voxel_downsample: Optional[float] = None
+        voxel_downsample: Optional[float] = None,
+        smooth: bool = False,
+        statistical_outlier_removal: bool = False,
+        sor_neighbors: int = 20,
+        sor_std_ratio: float = 2.0,
+        radius_outlier_removal: bool = False,
+        ror_radius: float = 0.05,
+        ror_min_neighbors: int = 5
     ) -> Dict[int, FusedPointCloud]:
         """
         全オブジェクトの点群を個別に統合
@@ -371,6 +539,13 @@ class MultiViewPointCloudFusion:
             max_depth: 最大深度
             min_depth: 最小深度
             voxel_downsample: ボクセルダウンサンプリングのサイズ
+            smooth: ボクセル内の点を平均化
+            statistical_outlier_removal: 統計的外れ値除去
+            sor_neighbors: 近傍点数
+            sor_std_ratio: 標準偏差倍率
+            radius_outlier_removal: 半径フィルタリング
+            ror_radius: 検索半径
+            ror_min_neighbors: 最小近傍点数
 
         Returns:
             オブジェクトID -> FusedPointCloud の辞書
@@ -386,7 +561,14 @@ class MultiViewPointCloudFusion:
                 use_world_coords=use_world_coords,
                 max_depth=max_depth,
                 min_depth=min_depth,
-                voxel_downsample=voxel_downsample
+                voxel_downsample=voxel_downsample,
+                smooth=smooth,
+                statistical_outlier_removal=statistical_outlier_removal,
+                sor_neighbors=sor_neighbors,
+                sor_std_ratio=sor_std_ratio,
+                radius_outlier_removal=radius_outlier_removal,
+                ror_radius=ror_radius,
+                ror_min_neighbors=ror_min_neighbors
             )
             return {0: result}
 
@@ -402,7 +584,14 @@ class MultiViewPointCloudFusion:
                 max_depth=max_depth,
                 min_depth=min_depth,
                 voxel_downsample=voxel_downsample,
-                object_id=obj_id
+                object_id=obj_id,
+                smooth=smooth,
+                statistical_outlier_removal=statistical_outlier_removal,
+                sor_neighbors=sor_neighbors,
+                sor_std_ratio=sor_std_ratio,
+                radius_outlier_removal=radius_outlier_removal,
+                ror_radius=ror_radius,
+                ror_min_neighbors=ror_min_neighbors
             )
             results[obj_id] = result
             print(f"Object {obj_id}: {len(result.points)} points")
