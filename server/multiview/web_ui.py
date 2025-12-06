@@ -570,6 +570,13 @@ def run_fusion(
     voxel_size: float,
     min_depth: float,
     max_depth: float,
+    smooth: bool,
+    statistical_outlier_removal: bool,
+    sor_neighbors: int,
+    sor_std_ratio: float,
+    radius_outlier_removal: bool,
+    ror_radius: float,
+    ror_min_neighbors: int,
     progress=gr.Progress()
 ) -> Tuple[str, Optional[str]]:
     """Run the fusion pipeline"""
@@ -617,7 +624,14 @@ def run_fusion(
                 frame_step=frame_step,
                 voxel_size=voxel_size if voxel_size > 0 else None,
                 min_depth=min_depth,
-                max_depth=max_depth
+                max_depth=max_depth,
+                smooth=smooth,
+                statistical_outlier_removal=statistical_outlier_removal,
+                sor_neighbors=sor_neighbors,
+                sor_std_ratio=sor_std_ratio,
+                radius_outlier_removal=radius_outlier_removal,
+                ror_radius=ror_radius,
+                ror_min_neighbors=ror_min_neighbors
             )
 
             # 複数オブジェクト対応
@@ -833,6 +847,56 @@ def create_ui():
                             value=10.0
                         )
 
+                        gr.Markdown("---")
+                        gr.Markdown("#### 表面スムージング")
+
+                        smooth = gr.Checkbox(
+                            label="ボクセル平均化（表面を滑らかに）",
+                            value=True
+                        )
+
+                        statistical_outlier_removal = gr.Checkbox(
+                            label="統計的外れ値除去",
+                            value=True
+                        )
+
+                        with gr.Row():
+                            sor_neighbors = gr.Slider(
+                                label="SOR近傍点数",
+                                minimum=5,
+                                maximum=50,
+                                step=1,
+                                value=20
+                            )
+                            sor_std_ratio = gr.Slider(
+                                label="SOR標準偏差倍率",
+                                minimum=0.5,
+                                maximum=5.0,
+                                step=0.1,
+                                value=2.0
+                            )
+
+                        radius_outlier_removal = gr.Checkbox(
+                            label="半径フィルタリング",
+                            value=False
+                        )
+
+                        with gr.Row():
+                            ror_radius = gr.Slider(
+                                label="ROR検索半径（m）",
+                                minimum=0.01,
+                                maximum=0.2,
+                                step=0.01,
+                                value=0.05
+                            )
+                            ror_min_neighbors = gr.Slider(
+                                label="ROR最小近傍点数",
+                                minimum=1,
+                                maximum=20,
+                                step=1,
+                                value=5
+                            )
+
             # Tab 3: Run Fusion
             with gr.TabItem("3. 実行", id="tab_run"):
                 gr.Markdown("### 点群統合を実行")
@@ -893,7 +957,11 @@ def create_ui():
 
         run_btn.click(
             fn=run_fusion,
-            inputs=[text_prompt, frame_step, voxel_size, min_depth, max_depth],
+            inputs=[
+                text_prompt, frame_step, voxel_size, min_depth, max_depth,
+                smooth, statistical_outlier_removal, sor_neighbors, sor_std_ratio,
+                radius_outlier_removal, ror_radius, ror_min_neighbors
+            ],
             outputs=[result_text, output_files]
         )
 

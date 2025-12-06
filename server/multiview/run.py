@@ -100,7 +100,14 @@ class MultiViewPipeline:
         frame_step: int = 1,
         voxel_size: Optional[float] = None,
         max_depth: float = 10.0,
-        min_depth: float = 0.1
+        min_depth: float = 0.1,
+        smooth: bool = False,
+        statistical_outlier_removal: bool = False,
+        sor_neighbors: int = 20,
+        sor_std_ratio: float = 2.0,
+        radius_outlier_removal: bool = False,
+        ror_radius: float = 0.05,
+        ror_min_neighbors: int = 5
     ) -> List[Path]:
         """
         マスクから点群を統合（複数オブジェクト対応）
@@ -111,6 +118,13 @@ class MultiViewPipeline:
             voxel_size: ダウンサンプリングサイズ
             max_depth: 最大深度
             min_depth: 最小深度
+            smooth: ボクセル平均化（表面を滑らかに）
+            statistical_outlier_removal: 統計的外れ値除去
+            sor_neighbors: 近傍点数
+            sor_std_ratio: 標準偏差倍率
+            radius_outlier_removal: 半径フィルタリング
+            ror_radius: 検索半径
+            ror_min_neighbors: 最小近傍点数
 
         Returns:
             出力PLYファイルパスのリスト
@@ -124,7 +138,14 @@ class MultiViewPipeline:
             use_world_coords=self.loader.has_camera_poses,
             max_depth=max_depth,
             min_depth=min_depth,
-            voxel_downsample=voxel_size
+            voxel_downsample=voxel_size,
+            smooth=smooth,
+            statistical_outlier_removal=statistical_outlier_removal,
+            sor_neighbors=sor_neighbors,
+            sor_std_ratio=sor_std_ratio,
+            radius_outlier_removal=radius_outlier_removal,
+            ror_radius=ror_radius,
+            ror_min_neighbors=ror_min_neighbors
         )
 
         # 各オブジェクトを個別のファイルに保存
@@ -147,7 +168,14 @@ class MultiViewPipeline:
         frame_step: int = 1,
         voxel_size: Optional[float] = None,
         max_depth: float = 10.0,
-        min_depth: float = 0.1
+        min_depth: float = 0.1,
+        smooth: bool = False,
+        statistical_outlier_removal: bool = False,
+        sor_neighbors: int = 20,
+        sor_std_ratio: float = 2.0,
+        radius_outlier_removal: bool = False,
+        ror_radius: float = 0.05,
+        ror_min_neighbors: int = 5
     ) -> Dict:
         """
         フルパイプラインを実行
@@ -161,6 +189,13 @@ class MultiViewPipeline:
             voxel_size: ダウンサンプリングサイズ
             max_depth: 最大深度
             min_depth: 最小深度
+            smooth: ボクセル平均化
+            statistical_outlier_removal: 統計的外れ値除去
+            sor_neighbors: 近傍点数
+            sor_std_ratio: 標準偏差倍率
+            radius_outlier_removal: 半径フィルタリング
+            ror_radius: 検索半径
+            ror_min_neighbors: 最小近傍点数
 
         Returns:
             結果の辞書
@@ -187,7 +222,14 @@ class MultiViewPipeline:
             frame_step=frame_step,
             voxel_size=voxel_size,
             max_depth=max_depth,
-            min_depth=min_depth
+            min_depth=min_depth,
+            smooth=smooth,
+            statistical_outlier_removal=statistical_outlier_removal,
+            sor_neighbors=sor_neighbors,
+            sor_std_ratio=sor_std_ratio,
+            radius_outlier_removal=radius_outlier_removal,
+            ror_radius=ror_radius,
+            ror_min_neighbors=ror_min_neighbors
         )
         result["output_plys"] = [str(p) for p in output_plys]
         # 後方互換性のため最初のファイルを output_ply にも設定
