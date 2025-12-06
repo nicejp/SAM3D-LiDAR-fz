@@ -73,17 +73,9 @@ class CameraIntrinsics:
     @property
     def fy(self) -> float:
         """y方向の焦点距離（ピクセル単位）"""
-        # iPhone LiDARは通常、正方形ピクセルを仮定
-        # ただし深度画像のアスペクト比が異なる場合は調整
-        import math
-        sensor_35mm_half_height = 12.0  # 24mm / 2
-
-        # 35mm換算FOVを計算（縦方向）
-        half_fov_rad = math.atan(sensor_35mm_half_height / self.focal_length)
-
-        # 深度画像のピクセル単位でfyを計算
-        fy = (self.depth_height / 2) / math.tan(half_fov_rad)
-        return fy
+        # iPhoneカメラは正方形ピクセルなので fx = fy
+        # これにより、異なるアスペクト比でも正しく投影される
+        return self.fx
 
     @property
     def cx(self) -> float:
