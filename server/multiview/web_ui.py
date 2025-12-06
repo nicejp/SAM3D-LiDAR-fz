@@ -94,24 +94,16 @@ def download_from_url(url: str, progress=gr.Progress()) -> Tuple[str, str]:
     try:
         progress(0, desc="ダウンロード準備中...")
 
-        # Parse URL to get filename
-        parsed = urllib.parse.urlparse(url)
-        filename = os.path.basename(parsed.path)
-
-        if not filename:
-            filename = "downloaded_data"
-
         # Create download directory
         download_dir = os.path.join(DEFAULT_EXPERIMENTS_DIR, "downloads")
         os.makedirs(download_dir, exist_ok=True)
 
-        # Download file
-        temp_path = os.path.join(download_dir, filename)
-
-        progress(0.1, desc=f"ダウンロード中: {filename}")
+        temp_path = None
 
         # Handle Google Drive links
         if 'drive.google.com' in url:
+            progress(0.1, desc="Google Driveからダウンロード中...")
+
             # Extract file ID from Google Drive URL
             if '/file/d/' in url:
                 file_id = url.split('/file/d/')[1].split('/')[0]
@@ -120,47 +112,53 @@ def download_from_url(url: str, progress=gr.Progress()) -> Tuple[str, str]:
             else:
                 return "", "Google DriveのURLが正しくありません"
 
-            # Use direct download URL
-            download_url = f"https://drive.google.com/uc?export=download&id={file_id}"
-
-            # For large files, we need to handle the confirmation page
+            # Use gdown for Google Drive (handles large files better)
             try:
-                # Try gdown if available
                 import gdown
-                gdown.download(download_url, temp_path, quiet=False)
+                download_url = f"https://drive.google.com/uc?id={file_id}"
+                temp_path = os.path.join(download_dir, f"gdrive_{file_id}")
+                gdown.download(download_url, temp_path, quiet=False, fuzzy=True)
             except ImportError:
-                # Fallback to urllib
-                urllib.request.urlretrieve(download_url, temp_path)
+                return "", "gdownがインストールされていません。pip install gdown を実行してください"
         else:
             # Regular URL download
+            parsed = urllib.parse.urlparse(url)
+            filename = os.path.basename(parsed.path) or "downloaded_data"
+            temp_path = os.path.join(download_dir, filename)
+
+            progress(0.1, desc=f"ダウンロード中: {filename}")
             urllib.request.urlretrieve(url, temp_path)
 
-        progress(0.5, desc="ダウンロード完了、展開中...")
+        if not temp_path or not os.path.exists(temp_path):
+            return "", "ダウンロードに失敗しました"
 
-        # Extract if archive
+        progress(0.5, desc="ダウンロード完了、ファイルタイプを確認中...")
+
+        # Detect file type and extract
         extract_dir = None
 
-        if filename.endswith('.zip'):
-            extract_dir = os.path.join(download_dir, filename.replace('.zip', ''))
+        # Try to open as ZIP (check magic bytes)
+        try:
             with zipfile.ZipFile(temp_path, 'r') as zip_ref:
+                extract_dir = temp_path + "_extracted"
+                os.makedirs(extract_dir, exist_ok=True)
+                progress(0.6, desc="ZIPファイルを展開中...")
                 zip_ref.extractall(extract_dir)
-            os.remove(temp_path)
+                os.remove(temp_path)
+        except zipfile.BadZipFile:
+            # Not a ZIP file, try tar.gz
+            try:
+                with tarfile.open(temp_path, 'r:gz') as tar_ref:
+                    extract_dir = temp_path + "_extracted"
+                    os.makedirs(extract_dir, exist_ok=True)
+                    progress(0.6, desc="tar.gzファイルを展開中...")
+                    tar_ref.extractall(extract_dir)
+                    os.remove(temp_path)
+            except:
+                # Not an archive, use download directory
+                extract_dir = download_dir
 
-        elif filename.endswith('.tar.gz') or filename.endswith('.tgz'):
-            extract_dir = os.path.join(download_dir, filename.replace('.tar.gz', '').replace('.tgz', ''))
-            with tarfile.open(temp_path, 'r:gz') as tar_ref:
-                tar_ref.extractall(extract_dir)
-            os.remove(temp_path)
-
-        elif filename.endswith('.tar'):
-            extract_dir = os.path.join(download_dir, filename.replace('.tar', ''))
-            with tarfile.open(temp_path, 'r') as tar_ref:
-                tar_ref.extractall(extract_dir)
-            os.remove(temp_path)
-        else:
-            extract_dir = download_dir
-
-        progress(0.8, desc="セッション検索中...")
+        progress(0.8, desc="Omniscientセッションを検索中...")
 
         # Find Omniscient session in extracted directory
         session_path = None
@@ -174,9 +172,17 @@ def download_from_url(url: str, progress=gr.Progress()) -> Tuple[str, str]:
             rel_path = os.path.relpath(session_path, DEFAULT_EXPERIMENTS_DIR)
             return rel_path, f"ダウンロード成功: {rel_path}"
         else:
-            return "", f"Omniscientセッションが見つかりません。展開先: {extract_dir}"
+            # List what was extracted for debugging
+            extracted_files = []
+            for root, dirs, files in os.walk(extract_dir):
+                for f in files[:10]:  # Limit to 10 files
+                    extracted_files.append(os.path.join(root, f))
+            files_info = "\n".join(extracted_files[:5]) if extracted_files else "なし"
+            return "", f"Omniscientセッション(.omniファイル)が見つかりません。\n展開先: {extract_dir}\n展開されたファイル:\n{files_info}"
 
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         return "", f"エラー: {str(e)}"
 
 
@@ -468,7 +474,8 @@ def create_ui():
                         session_dropdown = gr.Dropdown(
                             label="セッション選択",
                             choices=get_available_sessions(),
-                            interactive=True
+                            interactive=True,
+                            allow_custom_value=True
                         )
                         refresh_btn = gr.Button("リスト更新")
 
