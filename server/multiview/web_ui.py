@@ -512,8 +512,18 @@ def run_text_segmentation(text_prompt: str, frame_idx: int) -> Tuple[Optional[Im
             if tracker is not None:
                 info_parts.append("SAM 3 セグメンテーション実行中...")
 
-                # Start session
-                tracker.start_session(state.video_path)
+                # セッション開始（動画が変わった場合はトラッカーを再初期化）
+                if state.sam3_session_video != state.video_path:
+                    # 動画が変わったらトラッカーを再初期化（BFloat16エラー回避）
+                    global _sam3_tracker_instance
+                    _sam3_tracker_instance = None
+                    tracker = get_sam3_tracker()
+
+                    tracker.start_session(state.video_path)
+                    state.sam3_session_video = state.video_path
+                else:
+                    # 同じ動画でもセッションを再開始（テキストプロンプト用）
+                    tracker.start_session(state.video_path)
 
                 # Add text prompt and get mask
                 result = tracker.add_text_prompt(
