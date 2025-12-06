@@ -123,6 +123,14 @@ print("="*60)
 # 座標変換のテスト
 intrinsics = loader.get_intrinsics()
 print(f"Intrinsics: fx={intrinsics.fx:.2f}, fy={intrinsics.fy:.2f}, cx={intrinsics.cx:.2f}, cy={intrinsics.cy:.2f}")
+print(f"Depth image size: {intrinsics.depth_width} x {intrinsics.depth_height}")
+print(f"Focal length (35mm equiv): {intrinsics.focal_length:.2f}mm")
+
+# FOVを計算
+import math
+fov_h = 2 * math.degrees(math.atan(intrinsics.depth_width / (2 * intrinsics.fx)))
+fov_v = 2 * math.degrees(math.atan(intrinsics.depth_height / (2 * intrinsics.fy)))
+print(f"Calculated FOV: horizontal={fov_h:.1f}°, vertical={fov_v:.1f}°")
 
 # 単純なテストポイント（カメラの1m前の中心点）
 test_point = np.array([[0, 0, 1.0]])  # カメラ座標系: 1m前方

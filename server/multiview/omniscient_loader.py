@@ -56,16 +56,34 @@ class CameraIntrinsics:
     @property
     def fx(self) -> float:
         """x方向の焦点距離（ピクセル単位）"""
-        # 35mm換算からピクセル単位に変換
-        # センサーサイズを仮定（iPhone/iPad LiDAR: 約6.17mm x 4.55mm相当）
-        sensor_width_mm = 6.17
-        return self.focal_length * self.depth_width / sensor_width_mm
+        # 35mm換算焦点距離からFOVを計算し、ピクセル単位の焦点距離に変換
+        # 35mmフィルムのセンサーサイズ: 36mm x 24mm
+        # 横方向FOV = 2 * atan(18 / focal_length_35mm)
+        import math
+        sensor_35mm_half_width = 18.0  # 36mm / 2
+
+        # 35mm換算FOVを計算
+        half_fov_rad = math.atan(sensor_35mm_half_width / self.focal_length)
+
+        # 深度画像のピクセル単位でfxを計算
+        # fx = (depth_width / 2) / tan(half_fov)
+        fx = (self.depth_width / 2) / math.tan(half_fov_rad)
+        return fx
 
     @property
     def fy(self) -> float:
         """y方向の焦点距離（ピクセル単位）"""
-        sensor_height_mm = 4.55
-        return self.focal_length * self.depth_height / sensor_height_mm
+        # iPhone LiDARは通常、正方形ピクセルを仮定
+        # ただし深度画像のアスペクト比が異なる場合は調整
+        import math
+        sensor_35mm_half_height = 12.0  # 24mm / 2
+
+        # 35mm換算FOVを計算（縦方向）
+        half_fov_rad = math.atan(sensor_35mm_half_height / self.focal_length)
+
+        # 深度画像のピクセル単位でfyを計算
+        fy = (self.depth_height / 2) / math.tan(half_fov_rad)
+        return fy
 
     @property
     def cx(self) -> float:
