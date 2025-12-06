@@ -27,6 +27,14 @@ from dataclasses import dataclass
 import numpy as np
 from PIL import Image
 
+# Alembicローダーのインポート（オプション）
+HAS_ALEMBIC_LOADER = False
+try:
+    from server.multiview.alembic_loader import AlembicCameraLoader, transform_points_to_world
+    HAS_ALEMBIC_LOADER = True
+except ImportError:
+    pass
+
 
 @dataclass
 class CameraIntrinsics:
@@ -96,6 +104,7 @@ class OmniscientLoader:
         self._depth_files: Optional[List[Path]] = None
         self._confidence_files: Optional[List[Path]] = None
         self._video_capture = None
+        self._camera_loader: Optional['AlembicCameraLoader'] = None
 
     @property
     def omni_path(self) -> Path:
@@ -159,6 +168,29 @@ class OmniscientLoader:
     def camera_frames(self) -> List[Dict]:
         """各フレームのカメラパラメータ"""
         return self.metadata.get("data", {}).get("camera", {}).get("frames", [])
+
+    @property
+    def camera_loader(self) -> Optional['AlembicCameraLoader']:
+        """Alembicカメラローダー（遅延初期化）"""
+        if self._camera_loader is None and HAS_ALEMBIC_LOADER:
+            if self.abc_path.exists():
+                try:
+                    self._camera_loader = AlembicCameraLoader(str(self.abc_path))
+                except Exception as e:
+                    print(f"Warning: Failed to load Alembic camera poses: {e}")
+        return self._camera_loader
+
+    @property
+    def has_camera_poses(self) -> bool:
+        """カメラポーズが利用可能か"""
+        return self.camera_loader is not None and self.camera_loader.num_frames > 0
+
+    @property
+    def num_camera_poses(self) -> int:
+        """カメラポーズのフレーム数"""
+        if self.camera_loader:
+            return self.camera_loader.num_frames
+        return 0
 
     def get_intrinsics(self, frame_index: int = 0) -> CameraIntrinsics:
         """カメラ内部パラメータを取得"""
@@ -311,7 +343,7 @@ class OmniscientLoader:
         min_depth: float = 0.1
     ) -> np.ndarray:
         """
-        深度マップから点群を生成
+        深度マップから点群を生成（カメラ座標系）
 
         Args:
             depth_map: 深度マップ (H, W)、メートル単位
@@ -320,7 +352,7 @@ class OmniscientLoader:
             min_depth: 最小深度（メートル）
 
         Returns:
-            points: 点群 (N, 3)
+            points: 点群 (N, 3)、カメラ座標系
         """
         height, width = depth_map.shape
 
@@ -346,6 +378,69 @@ class OmniscientLoader:
 
         return points
 
+    def depth_to_pointcloud_world(
+        self,
+        depth_map: np.ndarray,
+        intrinsics: CameraIntrinsics,
+        frame_index: int,
+        max_depth: float = 10.0,
+        min_depth: float = 0.1
+    ) -> np.ndarray:
+        """
+        深度マップからワールド座標系の点群を生成
+
+        Args:
+            depth_map: 深度マップ (H, W)、メートル単位
+            intrinsics: カメラ内部パラメータ
+            frame_index: フレームインデックス（カメラポーズ用）
+            max_depth: 最大深度（メートル）
+            min_depth: 最小深度（メートル）
+
+        Returns:
+            points: 点群 (N, 3)、ワールド座標系
+        """
+        # カメラ座標系の点群を生成
+        points_camera = self.depth_to_pointcloud(depth_map, intrinsics, max_depth, min_depth)
+
+        if len(points_camera) == 0:
+            return points_camera
+
+        # カメラポーズが利用可能な場合、ワールド座標に変換
+        if self.has_camera_poses and frame_index < self.num_camera_poses:
+            camera_matrix = self.camera_loader.get_transform(frame_index)
+            points_world = transform_points_to_world(points_camera, camera_matrix, flip_yz=True)
+            return points_world
+
+        return points_camera
+
+    def get_camera_transform(self, frame_index: int) -> Optional[np.ndarray]:
+        """
+        特定フレームのカメラ変換行列を取得
+
+        Args:
+            frame_index: フレームインデックス
+
+        Returns:
+            4x4 変換行列、または None
+        """
+        if self.has_camera_poses and frame_index < self.num_camera_poses:
+            return self.camera_loader.get_transform(frame_index)
+        return None
+
+    def get_camera_position(self, frame_index: int) -> Optional[np.ndarray]:
+        """
+        特定フレームのカメラ位置を取得
+
+        Args:
+            frame_index: フレームインデックス
+
+        Returns:
+            (3,) 位置ベクトル、または None
+        """
+        if self.has_camera_poses and frame_index < self.num_camera_poses:
+            return self.camera_loader.get_position(frame_index)
+        return None
+
     def get_mesh_path(self) -> Optional[Path]:
         """スキャンメッシュのパスを取得"""
         obj_files = list(self.session_path.glob("scan_*.obj"))
@@ -354,6 +449,18 @@ class OmniscientLoader:
     def summary(self) -> Dict:
         """セッション情報のサマリー"""
         intrinsics = self.get_intrinsics()
+
+        # カメラポーズ情報
+        camera_poses_info = {
+            "available": self.has_camera_poses,
+            "num_frames": self.num_camera_poses
+        }
+        if self.has_camera_poses and self.num_camera_poses > 0:
+            first_pos = self.get_camera_position(0)
+            last_pos = self.get_camera_position(self.num_camera_poses - 1)
+            camera_poses_info["first_position"] = first_pos.tolist() if first_pos is not None else None
+            camera_poses_info["last_position"] = last_pos.tolist() if last_pos is not None else None
+
         return {
             "session_name": self.session_name,
             "session_path": str(self.session_path),
@@ -367,13 +474,14 @@ class OmniscientLoader:
                 "resolution": (intrinsics.depth_width, intrinsics.depth_height),
                 "unit": "meters"
             },
-            "camera": {
+            "camera_intrinsics": {
                 "focal_length_mm": intrinsics.focal_length,
                 "fx_px": intrinsics.fx,
                 "fy_px": intrinsics.fy,
                 "cx": intrinsics.cx,
                 "cy": intrinsics.cy
             },
+            "camera_poses": camera_poses_info,
             "files": {
                 "omni": str(self.omni_path),
                 "abc": str(self.abc_path) if self.abc_path.exists() else None,
@@ -435,20 +543,37 @@ def main():
 
     # PLYエクスポート
     if args.export_ply:
-        print(f"\n=== Exporting Point Cloud (step={args.step}) ===")
-        all_points = []
+        use_world = loader.has_camera_poses
+        coord_system = "world" if use_world else "camera"
+        print(f"\n=== Exporting Point Cloud (step={args.step}, {coord_system} coords) ===")
 
-        for frame in loader.iter_frames(step=args.step, load_rgb=False):
+        if use_world:
+            print(f"Camera poses available: {loader.num_camera_poses} frames")
+
+        all_points = []
+        max_frame = min(loader.num_depth_frames, loader.num_camera_poses) if use_world else loader.num_depth_frames
+
+        for frame_idx in range(0, max_frame, args.step):
+            frame = loader.get_frame(frame_idx, load_rgb=False)
             intrinsics = loader.get_intrinsics(frame.frame_index)
-            points = loader.depth_to_pointcloud(frame.depth_map, intrinsics)
+
+            if use_world:
+                points = loader.depth_to_pointcloud_world(
+                    frame.depth_map, intrinsics, frame.frame_index
+                )
+                pos = loader.get_camera_position(frame.frame_index)
+                print(f"Frame {frame.frame_index}: {len(points)} points, camera=({pos[0]:.3f}, {pos[1]:.3f}, {pos[2]:.3f})")
+            else:
+                points = loader.depth_to_pointcloud(frame.depth_map, intrinsics)
+                print(f"Frame {frame.frame_index}: {len(points)} points")
+
             all_points.append(points)
-            print(f"Frame {frame.frame_index}: {len(points)} points")
 
         merged_points = np.vstack(all_points)
         print(f"\nTotal points: {len(merged_points)}")
 
         # PLY保存
-        output_path = args.output or str(loader.session_path / "pointcloud.ply")
+        output_path = args.output or str(loader.session_path / "pointcloud_world.ply")
         save_ply(merged_points, output_path)
         print(f"Saved to: {output_path}")
 
