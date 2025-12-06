@@ -576,7 +576,7 @@ def run_fusion(
     global state
 
     if not state.session_path:
-        return "セッションが選択されていません", None
+        return "セッションが選択されていません", []
 
     # Determine prompt type
     prompt_type = None
@@ -589,7 +589,7 @@ def run_fusion(
         prompt_type = "text"
         prompt_value = text_prompt.strip()
     else:
-        return "クリックまたはテキストプロンプトを指定してください", None
+        return "クリックまたはテキストプロンプトを指定してください", []
 
     try:
         progress(0.1, desc="パイプライン初期化中...")
@@ -684,7 +684,7 @@ def run_fusion(
                     for p in merged:
                         f.write(f"{p[0]:.6f} {p[1]:.6f} {p[2]:.6f}\n")
             else:
-                return "点群の生成に失敗しました", None
+                return "点群の生成に失敗しました", []
 
         progress(1.0, desc="完了!")
 
@@ -700,6 +700,7 @@ def run_fusion(
 プロンプト: {prompt_type} = {prompt_value}
 フレーム間隔: {frame_step}
 """
+            return result_text, output_plys  # 複数ファイルを返す
         else:
             result_text = f"""
 処理完了!
@@ -709,13 +710,12 @@ def run_fusion(
 プロンプト: {prompt_type} = {prompt_value}
 フレーム間隔: {frame_step}
 """
-
-        return result_text, output_path
+            return result_text, [output_path] if output_path else []  # リストとして返す
 
     except Exception as e:
         import traceback
         traceback.print_exc()
-        return f"エラー: {str(e)}", None
+        return f"エラー: {str(e)}", []
 
 
 def create_ui():
@@ -845,7 +845,7 @@ def create_ui():
                     interactive=False
                 )
 
-                output_file = gr.File(label="出力ファイル")
+                output_files = gr.Files(label="出力ファイル")
 
         # Event handlers
         download_btn.click(
@@ -894,7 +894,7 @@ def create_ui():
         run_btn.click(
             fn=run_fusion,
             inputs=[text_prompt, frame_step, voxel_size, min_depth, max_depth],
-            outputs=[result_text, output_file]
+            outputs=[result_text, output_files]
         )
 
     return demo
