@@ -446,6 +446,8 @@ def on_image_click(evt: gr.SelectData, frame_idx: int) -> Tuple[Optional[Image.I
                 if state.current_mask is not None:
                     mask_pixels = np.sum(state.current_mask)
                     info_parts[-1] = f"✓ SAM 3 セグメンテーション完了 (マスク: {mask_pixels:,} pixels)"
+                    # クリックセグメント成功時はテキストプロンプトをクリア
+                    state.text_prompt = None
                 else:
                     info_parts[-1] = "SAM 3: マスクが生成されませんでした"
         except Exception as e:
@@ -536,6 +538,11 @@ def run_text_segmentation(text_prompt: str, frame_idx: int) -> Tuple[Optional[Im
                 if state.current_mask is not None:
                     mask_pixels = int(np.sum(state.current_mask))
                     info_parts[-1] = f"✓ SAM 3 セグメンテーション完了 (マスク: {mask_pixels:,} pixels)"
+                    # テキストセグメント成功時はクリック点をクリア（run_fusionで正しいモードを選択するため）
+                    state.click_point = None
+                    state.click_points = []
+                    state.click_labels = []
+                    state.text_prompt = text_prompt.strip()
                 else:
                     info_parts[-1] = "SAM 3: マスクが生成されませんでした"
         except Exception as e:
@@ -605,7 +612,7 @@ def run_fusion(
             result = pipeline.run_full_pipeline(
                 prompt_type=prompt_type,
                 prompt_frame=state.current_frame,
-                point_coords=state.click_point if prompt_type == "click" else None,
+                point_coords=[state.click_point] if prompt_type == "click" and state.click_point else None,
                 text=prompt_value if prompt_type == "text" else None,
                 frame_step=frame_step,
                 voxel_size=voxel_size if voxel_size > 0 else None,
