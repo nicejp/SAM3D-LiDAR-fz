@@ -245,14 +245,25 @@ class SAM3VideoTracker:
         if response and "outputs" in response:
             outputs = response["outputs"]
             if isinstance(outputs, dict):
+                # デバッグ: out_probs を確認
+                if "out_probs" in outputs:
+                    print(f"  out_probs: {outputs['out_probs']}")
+
                 # 新API形式: out_binary_masks にマスクが格納される
                 if "out_binary_masks" in outputs:
                     binary_masks = outputs["out_binary_masks"]
                     if binary_masks is not None and len(binary_masks) > 0:
                         # shape: (num_objects, height, width) -> 最初のマスクを取得
                         mask = binary_masks[0]
-                        # マスクは既に (height, width) 形式なので転置不要
-                        print(f"Extracted mask shape: {mask.shape}, sum: {mask.sum()}")
+                        total_pixels = mask.size
+                        mask_sum = mask.sum()
+                        print(f"Extracted mask shape: {mask.shape}")
+                        print(f"  Mask sum: {mask_sum} / {total_pixels} ({100*mask_sum/total_pixels:.1f}%)")
+                        print(f"  Mask unique values: {np.unique(mask)}")
+
+                        # マスクが半分以上の場合は反転が必要かもしれない
+                        if mask_sum > total_pixels * 0.5:
+                            print("  WARNING: Mask covers >50% of image, may be inverted")
                 else:
                     # 旧API形式: obj_id をキーとする辞書
                     obj_output = outputs.get(object_id)
