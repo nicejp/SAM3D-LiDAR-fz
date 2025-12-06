@@ -242,25 +242,32 @@ class SAM3VideoTracker:
         if response and "outputs" in response:
             outputs = response["outputs"]
             if isinstance(outputs, dict):
-                # obj_idに対応するマスクを取得
-                obj_output = outputs.get(object_id)
-                if obj_output is None and len(outputs) > 0:
-                    # 最初のオブジェクトを取得
-                    first_key = list(outputs.keys())[0]
-                    obj_output = outputs[first_key]
+                # 新API形式: out_binary_masks にマスクが格納される
+                if "out_binary_masks" in outputs:
+                    binary_masks = outputs["out_binary_masks"]
+                    if binary_masks is not None and len(binary_masks) > 0:
+                        # shape: (num_objects, width, height) -> 最初のマスクを取得
+                        mask = binary_masks[0]
+                        # (width, height) -> (height, width) に転置
+                        if len(mask.shape) == 2:
+                            mask = mask.T
+                        print(f"Extracted mask shape: {mask.shape}")
+                else:
+                    # 旧API形式: obj_id をキーとする辞書
+                    obj_output = outputs.get(object_id)
+                    if obj_output is None and len(outputs) > 0:
+                        first_key = list(outputs.keys())[0]
+                        obj_output = outputs[first_key]
 
-                if obj_output is not None:
-                    # obj_output が直接マスクの場合（numpy.ndarray or Tensor）
-                    if isinstance(obj_output, np.ndarray):
-                        mask = obj_output
-                    elif hasattr(obj_output, 'cpu'):
-                        # PyTorch tensor
-                        mask = obj_output.cpu().numpy()
-                    elif isinstance(obj_output, dict):
-                        # 辞書形式の場合
-                        mask = obj_output.get("mask")
-                        if mask is not None and hasattr(mask, 'cpu'):
-                            mask = mask.cpu().numpy()
+                    if obj_output is not None:
+                        if isinstance(obj_output, np.ndarray):
+                            mask = obj_output
+                        elif hasattr(obj_output, 'cpu'):
+                            mask = obj_output.cpu().numpy()
+                        elif isinstance(obj_output, dict):
+                            mask = obj_output.get("mask")
+                            if mask is not None and hasattr(mask, 'cpu'):
+                                mask = mask.cpu().numpy()
 
         return {
             "frame_index": frame_index,
