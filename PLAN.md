@@ -945,7 +945,7 @@ python scripts/evaluate.py \
 | **自動融合** | `server/fusion/auto_fuse.py` | SciPyベース自動融合 | ✅ 完了 |
 | Gaussian Splat変換 | `server/fusion/gaussian_splat.py` | GS PLY読み書き | ✅ 完了 |
 | **Omniscientローダー** | `server/multiview/omniscient_loader.py` | Omniscientデータ読み込み | ✅ 完了 |
-| **Alembicローダー** | `server/multiview/alembic_loader.py` | カメラポーズ抽出(bpy) | ✅ 完了 |
+| **Alembicローダー** | `server/multiview/alembic_loader.py` | カメラポーズ抽出(Blender subprocess) | ✅ 完了 |
 | **SAM 3トラッカー** | `server/multiview/sam3_video_tracker.py` | ビデオトラッキング | ✅ 完了 |
 | **点群統合** | `server/multiview/pointcloud_fusion.py` | 多視点点群統合 | ✅ 完了 |
 | **多視点パイプライン** | `server/multiview/run.py` | 統合パイプライン | ✅ 完了 |
@@ -988,6 +988,27 @@ export PYTHONPATH=/workspace:/workspace/sam3:$PYTHONPATH
 | `--ipc=host` | ホストの共有メモリを使用（PyTorchのメモリエラー対策） |
 | `--ulimit memlock=-1` | メモリロック制限を解除 |
 | `--network=host` | ホストのネットワークを直接使用 |
+
+### 多視点融合用の追加依存関係
+
+**Blender（カメラポーズ抽出に必要）:**
+
+Omniscientデータからカメラポーズを抽出するには、Blenderのインストールが必要です。`bpy`パッケージはpipでインストールできないため、システムのBlenderをバックグラウンドモードで使用します。
+
+```bash
+# Dockerコンテナ内でBlenderをインストール
+apt-get update && apt-get install -y blender
+
+# インストール確認
+which blender
+# → /usr/bin/blender
+
+# 動作確認
+python -c "from server.multiview.alembic_loader import BLENDER_PATH; print(f'Blender: {BLENDER_PATH}')"
+# → Blender: /usr/bin/blender
+```
+
+**注意:** カメラポーズがないと、すべての点群がカメラローカル座標で出力され、正しく統合されません（点群が「厚く」なる問題）。
 
 ### 融合パイプライン用のセットアップ
 
