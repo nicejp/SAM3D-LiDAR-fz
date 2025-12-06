@@ -248,6 +248,9 @@ def load_session(session_name: str) -> Tuple[Optional[Image.Image], str, dict]:
         # Get video path (convert to string for cv2)
         video_path = loader.video_path
         state.video_path = str(video_path) if video_path else None
+        print(f"[DEBUG] load_session: video_path={video_path}")
+        print(f"[DEBUG] load_session: state.video_path={state.video_path}")
+        print(f"[DEBUG] load_session: exists={os.path.exists(state.video_path) if state.video_path else False}")
 
         # Get frame count
         if CV2_AVAILABLE and state.video_path and os.path.exists(state.video_path):
@@ -282,22 +285,39 @@ def get_video_frame(frame_idx: int) -> Optional[Image.Image]:
     """Extract a specific frame from video"""
     global state
 
-    if not state.video_path or not os.path.exists(state.video_path):
+    print(f"[DEBUG] get_video_frame called: frame_idx={frame_idx}")
+    print(f"[DEBUG] state.video_path={state.video_path}")
+    print(f"[DEBUG] CV2_AVAILABLE={CV2_AVAILABLE}")
+
+    if not state.video_path:
+        print("[DEBUG] video_path is None or empty")
+        return None
+
+    if not os.path.exists(state.video_path):
+        print(f"[DEBUG] video file does not exist: {state.video_path}")
         return None
 
     if not CV2_AVAILABLE:
+        print("[DEBUG] CV2 is not available")
         return None
 
     try:
         cap = cv2.VideoCapture(state.video_path)
+        print(f"[DEBUG] VideoCapture opened: {cap.isOpened()}")
+        if not cap.isOpened():
+            print(f"[DEBUG] Failed to open video: {state.video_path}")
+            return None
+
         cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
         ret, frame = cap.read()
         cap.release()
+        print(f"[DEBUG] Frame read result: ret={ret}, frame shape={frame.shape if ret and frame is not None else None}")
 
-        if ret:
+        if ret and frame is not None:
             # Convert BGR to RGB
             frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             image = Image.fromarray(frame_rgb)
+            print(f"[DEBUG] Image created: {image.size}")
 
             # Draw click point if exists
             if state.click_point and state.current_frame == frame_idx:
@@ -309,10 +329,13 @@ def get_video_frame(frame_idx: int) -> Optional[Image.Image]:
                 draw.ellipse([x-3, y-3, x+3, y+3], fill='red')
 
             return image
+        print("[DEBUG] Frame read failed")
         return None
 
     except Exception as e:
-        print(f"Frame extraction error: {e}")
+        import traceback
+        print(f"[DEBUG] Frame extraction error: {e}")
+        traceback.print_exc()
         return None
 
 
